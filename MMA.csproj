@@ -1,11 +1,17 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
-  <PropertyGroup>
-    <OutputType>WinExe</OutputType>
-    <TargetFramework>net8.0-windows</TargetFramework>
-    <Nullable>enable</Nullable>
-    <UseWindowsForms>true</UseWindowsForms>
-    <ImplicitUsings>enable</ImplicitUsings>
-  </PropertyGroup>
+	<PropertyGroup>
+		<OutputType>WinExe</OutputType>
+		<TargetFramework>net8.0-windows</TargetFramework>
+		<Nullable>enable</Nullable>
+		<UseWindowsForms>true</UseWindowsForms>
+		<ImplicitUsings>enable</ImplicitUsings>
+	</PropertyGroup>
 
+
+	<Target Name="PostBuild" AfterTargets="PostBuildEvent">
+	  <Exec Command="copy $(ProjectDir)$(OutDir)\MMA.exe $(ProjectDir)LatestBuild\" />
+	  <Exec Command="copy $(ProjectDir)$(OutDir)\MMA.dll $(ProjectDir)LatestBuild\" />
+      <Exec Command="copy $(ProjectDir)$(OutDir)\MMA.runtimeconfig.json $(ProjectDir)LatestBuild\" />		
+	</Target>
 </Project>
