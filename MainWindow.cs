@@ -7,6 +7,7 @@ namespace MMA
     /// </summary>
     public partial class MainWindow : Form
     {
+        #region Fields
         /// <summary>
         /// Keeps track of where is the original mouse position to avoid colliding with the screen edges
         /// </summary>
@@ -47,6 +48,7 @@ namespace MMA
         /// Dispatcher to set the focus on the main window
         /// </summary>
         delegate void WindowFocusCallBack();
+        #endregion
 
         /// <summary>
         /// Initialize MainWindow
@@ -72,7 +74,7 @@ namespace MMA
         private void Timer_Elapsed(object? sender, System.Timers.ElapsedEventArgs e)
         {
             timer.Stop();
-            MoveMouseAtRandom();
+            MouseMoves.MoveMouse(random);
             WriteRandomText();
 
             if (pass == 0)
@@ -81,19 +83,12 @@ namespace MMA
             }
             if (pass > 2 && random.Next(0, 3) <= pass)
             {
-                if (random.Next(0, 1) == 0)
-                {
-                    MoveMouseInCircles();
-                }
-                else
-                {
-                    MoveMouseInSquare();
-                }
-
+                MouseMoves.RandomMouseMove(random);
                 WriteRandomText();
             }
             if (pass >= 4)
             {
+                MouseMoves.MoveMouse(random);
                 pass = 0;
                 ClearText();
             }
@@ -102,11 +97,32 @@ namespace MMA
             timer.Start();
         }
 
+        /// <summary>
+        /// Method that handles the click event for the Main window's OK button.
+        /// </summary>
+        /// <param name="sender">Event sender</param>
+        /// <param name="e">Event Arguments</param>
+        private void buttonOk_Click(object sender, EventArgs e)
+        {
+            //Reset x,y origin
+            OgStart = Cursor.Position;
+
+            //Perform random mouse function
+            MouseMoves.RandomMouseMove(random);
+        }
+
+        #region Text Methods
+        /// <summary>
+        /// Clears the textbox's text
+        /// </summary>
         private void ClearText()
         {
             SetTextBoxClear();
         }
 
+        /// <summary>
+        /// Writes something random in the textboxt
+        /// </summary>
         private void WriteRandomText()
         {
             SetTextBoxFocus();
@@ -122,6 +138,7 @@ namespace MMA
             SetWindowFocus();
         }
 
+        #region Delegate handlers
         private void SetWindowFocus()
         {
             if (this.InvokeRequired)
@@ -133,168 +150,6 @@ namespace MMA
             {
                 this.Focus();
             }
-        }
-
-        /// <summary>
-        /// Method that emulates a random user input (in the form of a mouse movement).
-        /// </summary>
-        private void MoveMouseAtRandom()
-        {
-            var moves = random.Next(20, 55);
-            var delayInMotion = 3;
-            var variance = random.Next(1, 3);
-
-            // X
-            if (random.Next(1, 6) >= 4)
-            {
-                for (int i = 0; i < moves; i++)
-                {
-                    Cursor.Position = new Point(Cursor.Position.X + random.Next(-5, 5), Cursor.Position.Y - variance);
-                    i++;
-                    Cursor.Position = new Point(Cursor.Position.X + random.Next(-5, 5), Cursor.Position.Y + variance);
-                    if (i % 3 == 0)
-                    {
-                        Thread.Sleep(delayInMotion);
-                    }
-                }
-            }
-
-            else
-            {
-                // Y
-                for (int i = 0; i < moves; i++)
-                {
-                    Cursor.Position = new Point(Cursor.Position.X + variance, Cursor.Position.Y + random.Next(-5, 5));
-                    i++;
-                    Cursor.Position = new Point(Cursor.Position.X + variance, Cursor.Position.Y + random.Next(-5, 5));
-                    if (i % 3 == 0)
-                    {
-                        Thread.Sleep(delayInMotion);
-                    }
-                }
-            }
-        }
-
-        private void MoveMouseInSquare()
-        {
-            var squareSize = 350;
-            var delayInMotion = 1;
-            var variance = random.Next(1, 3);
-
-            // Positive right (==>x+350,y+0)
-            for (int i = 0; i < squareSize; i++)
-            {
-                Cursor.Position = new Point(Cursor.Position.X + 1, Cursor.Position.Y - variance);
-                i++;
-                Cursor.Position = new Point(Cursor.Position.X + 1, Cursor.Position.Y + variance);
-                if (i % 7 == 0)
-                {
-                    Thread.Sleep(delayInMotion);
-                }
-            }
-
-            // Downward (==>x+0,y+350)
-            for (int i = 0; i < squareSize; i++)
-            {
-                Cursor.Position = new Point(Cursor.Position.X - variance, Cursor.Position.Y + 1);
-                i++;
-                if (i % 9 == 0)
-                {
-                    Thread.Sleep(delayInMotion);
-                }
-                Cursor.Position = new Point(Cursor.Position.X + variance, Cursor.Position.Y + 1);
-            }
-
-            // Positive left (==>x-350,y+0)
-            for (int i = 0; i < squareSize; i++)
-            {
-                Cursor.Position = new Point(Cursor.Position.X - 1, Cursor.Position.Y - variance);
-                i++;
-                Cursor.Position = new Point(Cursor.Position.X - 1, Cursor.Position.Y + variance);
-                if (i % 8 == 0)
-                {
-                    Thread.Sleep(delayInMotion);
-                }
-            }
-
-            // Upward (==>x+0,y-350)
-            for (int i = 0; i < squareSize; i++)
-            {
-                Cursor.Position = new Point(Cursor.Position.X - variance, Cursor.Position.Y - 1);
-                i++;
-                if (i % 7 == 0)
-                {
-                    Thread.Sleep(delayInMotion);
-                }
-                Cursor.Position = new Point(Cursor.Position.X + variance, Cursor.Position.Y - 1);
-            }
-        }
-
-        private void MoveMouseInCircles()
-        {
-            var circleSize = 300;
-            var delayInMotion = 1;
-            var variance = random.Next(1, 3);
-
-            // Positive diagonal right (==>x+200,y+200)
-            for (int i = 0; i < circleSize; i++)
-            {
-                Cursor.Position = new Point(Cursor.Position.X + 1, Cursor.Position.Y - 1);
-                if (i % 7 == 0)
-                {
-                    Thread.Sleep(delayInMotion);
-                }
-            }
-
-            // Downward (==>x+200,y)
-            for (int i = 0; i < circleSize; i++)
-            {
-                Cursor.Position = new Point(Cursor.Position.X - variance, Cursor.Position.Y + 1);
-                i++;
-                Cursor.Position = new Point(Cursor.Position.X + variance, Cursor.Position.Y + 1);
-                if (i % 11 == 0)
-                {
-                    Thread.Sleep(delayInMotion);
-                }
-            }
-
-            // Positive diagonal left (==>x,y+200)
-            for (int i = 0; i < circleSize; i++)
-            {
-                Cursor.Position = new Point(Cursor.Position.X - 1, Cursor.Position.Y - 1);
-                if (i % 7 == 0)
-                {
-                    Thread.Sleep(delayInMotion);
-                }
-            }
-
-            // Downward (==>x,y)            
-            for (int i = 0; i < circleSize; i++)
-            {
-                Cursor.Position = new Point(Cursor.Position.X - variance, Cursor.Position.Y + 1);
-                i++;
-                if (i % 9 == 0)
-                {
-                    Thread.Sleep(delayInMotion);
-                }
-                Cursor.Position = new Point(Cursor.Position.X + variance, Cursor.Position.Y + 1);
-            }
-        }
-
-        /// <summary>
-        /// Method that handles the click event for the Main window's OK button.
-        /// </summary>
-        /// <param name="sender">Event sender</param>
-        /// <param name="e">Event Arguments</param>
-        private void buttonOk_Click(object sender, EventArgs e)
-        {
-            //Reset x,y origin
-            OgStart = Cursor.Position;
-
-            //Perform random mouse function
-            //MoveMouseInCircles();
-            //MoveMouseInSquare();
-            MoveMouseAtRandom();
         }
 
         /// <summary>
@@ -342,5 +197,7 @@ namespace MMA
                 textBox.Clear();
             }
         }
+        #endregion
+#endregion
     }
 }
