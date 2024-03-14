@@ -7,11 +7,7 @@
 		<UseWindowsForms>true</UseWindowsForms>
 		<ImplicitUsings>enable</ImplicitUsings>
 	</PropertyGroup>
-
-
 	<Target Name="PostBuild" AfterTargets="PostBuildEvent">
-	  <Exec Command="copy $(ProjectDir)$(OutDir)\MMA.exe $(ProjectDir)LatestBuild\" />
-	  <Exec Command="copy $(ProjectDir)$(OutDir)\MMA.dll $(ProjectDir)LatestBuild\" />
-      <Exec Command="copy $(ProjectDir)$(OutDir)\MMA.runtimeconfig.json $(ProjectDir)LatestBuild\" />		
+	  <Exec Command="call postbuild.bat" />
 	</Target>
 </Project>
