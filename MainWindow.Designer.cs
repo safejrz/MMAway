@@ -1,6 +1,6 @@
 ﻿namespace MMA
 {
-    partial class Form1
+    partial class MainWindow
     {
         /// <summary>
         ///  Required designer variable.
@@ -29,38 +29,52 @@
         private void InitializeComponent()
         {
             buttonOk = new Button();
+            textBox = new TextBox();
             SuspendLayout();
             // 
             // buttonOk
             // 
             buttonOk.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-            buttonOk.Dock = DockStyle.Fill;
             buttonOk.Font = new Font("Segoe UI", 48F, FontStyle.Bold);
-            buttonOk.Location = new Point(0, 0);
+            buttonOk.Location = new Point(12, 126);
+            buttonOk.Margin = new Padding(2);
             buttonOk.Name = "buttonOk";
-            buttonOk.Size = new Size(398, 364);
+            buttonOk.Size = new Size(260, 92);
             buttonOk.TabIndex = 0;
             buttonOk.Text = "OK";
             buttonOk.UseVisualStyleBackColor = true;
             buttonOk.Click += buttonOk_Click;
             // 
-            // Form1
+            // textBox
             // 
-            AutoScaleDimensions = new SizeF(10F, 25F);
+            textBox.Font = new Font("Segoe UI", 16F);
+            textBox.Location = new Point(12, 12);
+            textBox.Multiline = true;
+            textBox.Name = "textBox";
+            textBox.Size = new Size(259, 109);
+            textBox.TabIndex = 1;
+            // 
+            // MainWindow
+            // 
+            AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
-            ClientSize = new Size(398, 364);
+            ClientSize = new Size(283, 229);
+            Controls.Add(textBox);
             Controls.Add(buttonOk);
+            Margin = new Padding(2);
             MaximizeBox = false;
-            MaximumSize = new Size(420, 420);
-            MinimumSize = new Size(420, 420);
-            Name = "Form1";
+            MaximumSize = new Size(299, 268);
+            MinimumSize = new Size(299, 268);
+            Name = "MainWindow";
             StartPosition = FormStartPosition.CenterScreen;
-            Text = "Form1";
+            Text = "Main";
             ResumeLayout(false);
+            PerformLayout();
         }
 
         #endregion
 
         private Button buttonOk;
+        private TextBox textBox;
     }
 }
