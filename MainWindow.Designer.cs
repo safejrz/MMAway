@@ -30,16 +30,20 @@
         {
             buttonOk = new Button();
             textBox = new TextBox();
+            panel = new Panel();
+            panel.SuspendLayout();
             SuspendLayout();
             // 
             // buttonOk
             // 
+            buttonOk.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
             buttonOk.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-            buttonOk.Font = new Font("Segoe UI", 48F, FontStyle.Bold);
-            buttonOk.Location = new Point(12, 126);
-            buttonOk.Margin = new Padding(2);
+            buttonOk.FlatAppearance.BorderSize = 5;
+            buttonOk.Font = new Font("Segoe UI", 45F, FontStyle.Bold);
+            buttonOk.Location = new Point(9, 160);
+            buttonOk.Margin = new Padding(0);
             buttonOk.Name = "buttonOk";
-            buttonOk.Size = new Size(260, 92);
+            buttonOk.Size = new Size(265, 91);
             buttonOk.TabIndex = 0;
             buttonOk.Text = "OK";
             buttonOk.UseVisualStyleBackColor = true;
@@ -47,34 +51,51 @@
             // 
             // textBox
             // 
+            textBox.BorderStyle = BorderStyle.None;
+            textBox.Dock = DockStyle.Fill;
             textBox.Font = new Font("Segoe UI", 16F);
-            textBox.Location = new Point(12, 12);
+            textBox.Location = new Point(1, 1);
+            textBox.Margin = new Padding(0);
             textBox.Multiline = true;
             textBox.Name = "textBox";
-            textBox.Size = new Size(259, 109);
+            textBox.Size = new Size(253, 128);
             textBox.TabIndex = 1;
+            // 
+            // panel
+            // 
+            panel.BackColor = SystemColors.HotTrack;
+            panel.BorderStyle = BorderStyle.Fixed3D;
+            panel.Controls.Add(textBox);
+            panel.Location = new Point(12, 12);
+            panel.Margin = new Padding(0);
+            panel.Name = "panel";
+            panel.Padding = new Padding(1);
+            panel.Size = new Size(259, 134);
+            panel.TabIndex = 2;
             // 
             // MainWindow
             // 
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
-            ClientSize = new Size(283, 229);
-            Controls.Add(textBox);
+            ClientSize = new Size(283, 260);
+            Controls.Add(panel);
             Controls.Add(buttonOk);
             Margin = new Padding(2);
             MaximizeBox = false;
-            MaximumSize = new Size(299, 268);
-            MinimumSize = new Size(299, 268);
+            MaximumSize = new Size(299, 299);
+            MinimumSize = new Size(299, 299);
             Name = "MainWindow";
             StartPosition = FormStartPosition.CenterScreen;
             Text = "Main";
+            panel.ResumeLayout(false);
+            panel.PerformLayout();
             ResumeLayout(false);
-            PerformLayout();
         }
 
         #endregion
 
         private Button buttonOk;
         private TextBox textBox;
+        private Panel panel;
     }
 }
