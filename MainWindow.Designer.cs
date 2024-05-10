@@ -43,7 +43,7 @@
             buttonOk.Location = new Point(12, 160);
             buttonOk.Margin = new Padding(0);
             buttonOk.Name = "buttonOk";
-            buttonOk.Size = new Size(252, 91);
+            buttonOk.Size = new Size(256, 91);
             buttonOk.TabIndex = 0;
             buttonOk.Text = "OK";
             buttonOk.UseVisualStyleBackColor = true;
@@ -58,7 +58,7 @@
             textBox.Margin = new Padding(0);
             textBox.Multiline = true;
             textBox.Name = "textBox";
-            textBox.Size = new Size(246, 128);
+            textBox.Size = new Size(252, 129);
             textBox.TabIndex = 1;
             // 
             // panel
@@ -70,7 +70,7 @@
             panel.Margin = new Padding(0);
             panel.Name = "panel";
             panel.Padding = new Padding(1);
-            panel.Size = new Size(252, 134);
+            panel.Size = new Size(258, 135);
             panel.TabIndex = 2;
             // 
             // MainWindow
