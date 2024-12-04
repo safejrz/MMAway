@@ -1,4 +1,7 @@
-﻿namespace MMA
+﻿using MMA.Properties;
+using System.Xml.Serialization;
+
+namespace MMA
 {
     partial class MainWindow
     {
@@ -36,7 +39,7 @@
             // 
             // buttonOk
             // 
-            buttonOk.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
+            buttonOk.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
             buttonOk.AutoSizeMode = AutoSizeMode.GrowAndShrink;
             buttonOk.FlatAppearance.BorderSize = 5;
             buttonOk.Font = new Font("Segoe UI", 45F, FontStyle.Bold);
@@ -45,7 +48,7 @@
             buttonOk.Name = "buttonOk";
             buttonOk.Size = new Size(256, 91);
             buttonOk.TabIndex = 0;
-            buttonOk.Text = "OK";
+            buttonOk.Text = "Start";
             buttonOk.UseVisualStyleBackColor = true;
             buttonOk.Click += buttonOk_Click;
             // 
@@ -80,12 +83,14 @@
             ClientSize = new Size(283, 260);
             Controls.Add(panel);
             Controls.Add(buttonOk);
+            FormBorderStyle = FormBorderStyle.FixedSingle;
+            Icon = Resources.MainIcon;
             Margin = new Padding(2);
             MaximizeBox = false;
             MaximumSize = new Size(299, 299);
             MinimumSize = new Size(299, 299);
             Name = "MainWindow";
-            StartPosition = FormStartPosition.CenterScreen;
+            StartPosition = FormStartPosition.Manual;
             Text = "Main";
             panel.ResumeLayout(false);
             panel.PerformLayout();

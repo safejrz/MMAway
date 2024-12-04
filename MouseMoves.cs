@@ -1,24 +1,45 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿using System.Runtime.InteropServices;
 
 namespace MMA
 {
     internal static class MouseMoves
     {
         /// <summary>
+        /// Method that emulates a mouse event.
+        /// </summary>
+        /// <param name="dwFlags">Flags for the button presses to emulate</param>
+        /// <param name="dx">Mouse X axis position</param>
+        /// <param name="dy">Mouse Y axis position</param>
+        /// <param name="dwData">Nothing</param>
+        /// <param name="dwExtraInfo">Nothing</param>
+        [DllImport("user32.dll", SetLastError = true)]
+        static extern void mouse_event(uint dwFlags, uint dx, uint dy, uint dwData, UIntPtr dwExtraInfo);
+        private const uint MOUSEEVENTF_LEFTDOWN = 0x0002;
+        private const uint MOUSEEVENTF_LEFTUP = 0x0004;
+
+        /// <summary>
         /// Random object to generate movement.
         /// </summary>
         private static Random? random;
 
+        /// <summary>
+        /// Scheduled async thread for random mouse move.
+        /// </summary>
         public static void RandomMouseMove(Random senderRandom)
         {
             random = senderRandom;
 
+            var scheduledAsyncMouseMove = new Thread(NextMouseMove);
+            scheduledAsyncMouseMove.Start();
+        }
+
+        /// <summary>
+        /// Method that executes the next mouse actions.
+        /// </summary>
+        private static void NextMouseMove()
+        {
             //Perform random mouse function
-            var action = random.Next(1, 9);
+            var action = random?.Next(1, 9);
             if (action >= 5)
             {
                 MoveMouseInSquare();
@@ -27,6 +48,21 @@ namespace MMA
             {
                 MoveMouseInCircles();
             }
+
+            EmulatedMouseClick();
+        }
+
+        /// <summary>
+        /// Method that emulates a mouse left click.
+        /// </summary>
+        private static void EmulatedMouseClick()
+        {
+            // Get the current mouse position
+            uint x = (uint)Cursor.Position.X;
+            uint y = (uint)Cursor.Position.Y;
+
+            // Perform the mouse click
+            mouse_event(MOUSEEVENTF_LEFTDOWN | MOUSEEVENTF_LEFTUP, x, y, 0, UIntPtr.Zero);
         }
 
         public static void MoveMouse(Random senderRandom)
@@ -75,6 +111,9 @@ namespace MMA
             }
         }
 
+        /// <summary>
+        /// Moves the mouse in way that resembles drawing a square.
+        /// </summary>
         private static void MoveMouseInSquare()
         {
             if (random == null) return;
@@ -131,6 +170,9 @@ namespace MMA
             }
         }
 
+        /// <summary>
+        /// Moves the mouse in way that resembles drawing an infinite sign with two triangles.
+        /// </summary>
         private static void MoveMouseInCircles()
         {
             if (random == null) return;
