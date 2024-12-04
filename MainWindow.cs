@@ -1,4 +1,5 @@
-using static System.Net.Mime.MediaTypeNames;
+using MMA.Properties;
+using System.Runtime.InteropServices;
 
 namespace MMA
 {
@@ -7,6 +8,25 @@ namespace MMA
     /// </summary>
     public partial class MainWindow : Form
     {
+        /// <summary>
+        /// Code to prevent going into sleep-mode.
+        /// </summary>
+        /// <param name="esFlags"></param>
+        /// <returns>Nothing</returns>
+        [DllImport("kernel32.dll", SetLastError = true)]
+        static extern bool SetThreadExecutionState(EXECUTION_STATE esFlags);
+
+        /// <summary>
+        /// Static enum flags, part of the code to prevent going into sleep-mode.
+        /// </summary>
+        [Flags]
+        enum EXECUTION_STATE : uint
+        {
+            ES_CONTINUOUS = 0x80000000,
+            ES_SYSTEM_REQUIRED = 0x00000001,
+            ES_DISPLAY_REQUIRED = 0x00000002
+        }
+
         #region Fields
         /// <summary>
         /// Keeps track of where is the original mouse position to avoid colliding with the screen edges
@@ -27,6 +47,11 @@ namespace MMA
         /// Timer object that will help us triggering the emulated user input each time it occurs
         /// </summary>
         private System.Timers.Timer timer = new System.Timers.Timer();
+
+        /// <summary>
+        /// This variable is set to false by default. Used to identify if the program timer should be started or stopped.
+        /// </summary>
+        private bool shouldBeRunning = false;
 
         /// <summary>
         /// Dispatcher to modify the textbox in the UI
@@ -58,12 +83,12 @@ namespace MMA
             //Obtain screen size to get the center
             var primaryScreen = Screen.PrimaryScreen ?? Screen.AllScreens.FirstOrDefault();
             Size screenSize = primaryScreen?.Bounds.Size ?? new Size(512, 384);
-            OgStart = new Point(screenSize.Width / 2, screenSize.Height / 2);
+            OgStart = new Point(screenSize.Width / 4, (screenSize.Height / 5) * 4);
+            Location = new Point(screenSize.Width / 10, screenSize.Height / 5);
 
             InitializeComponent();
             timer.Interval = random.Next(10000, 15000);
             timer.Elapsed += Timer_Elapsed;
-            timer.Start();
         }
 
         /// <summary>
@@ -74,27 +99,30 @@ namespace MMA
         private void Timer_Elapsed(object? sender, System.Timers.ElapsedEventArgs e)
         {
             timer.Stop();
-            MouseMoves.MoveMouse(random);
-            WriteRandomText();
-
-            if (pass == 0)
-            {
-                Cursor.Position = OgStart;
-            }
-            if (pass > 2 && random.Next(0, 3) <= pass)
-            {
-                MouseMoves.RandomMouseMove(random);
-                WriteRandomText();
-            }
-            if (pass >= 4)
+            if (shouldBeRunning)
             {
                 MouseMoves.MoveMouse(random);
-                pass = 0;
-                ClearText();
+                WriteRandomText();
+
+                if (pass == 0)
+                {
+                    Cursor.Position = OgStart;
+                }
+                if (pass > 2 && random.Next(0, 3) <= pass)
+                {
+                    MouseMoves.RandomMouseMove(random);
+                    WriteRandomText();
+                }
+                if (pass >= 4)
+                {
+                    MouseMoves.MoveMouse(random);
+                    pass = 0;
+                    ClearText();
+                }
+                pass++;
+                timer.Interval = random.Next(5000, 15000);
+                timer.Start();
             }
-            pass++;
-            timer.Interval = random.Next(5000, 15000);
-            timer.Start();
         }
 
         /// <summary>
@@ -104,8 +132,23 @@ namespace MMA
         /// <param name="e">Event Arguments</param>
         private void buttonOk_Click(object sender, EventArgs e)
         {
-            //Reset x,y origin
-            OgStart = Cursor.Position;
+            shouldBeRunning = !shouldBeRunning;
+            var lastOpenedForm = Application.OpenForms.Cast<Form>().Last();
+
+            if (!shouldBeRunning)
+            {
+                SetThreadExecutionState(EXECUTION_STATE.ES_CONTINUOUS);
+                lastOpenedForm.Icon = Resources.StopIcon;
+                buttonOk.Text = Resources.ButtonStartLabel;
+                timer.Stop();
+                return;
+            }
+
+            SetThreadExecutionState(EXECUTION_STATE.ES_CONTINUOUS | EXECUTION_STATE.ES_SYSTEM_REQUIRED | EXECUTION_STATE.ES_DISPLAY_REQUIRED);
+            Cursor.Position = OgStart;
+            lastOpenedForm.Icon = Resources.RunIcon;
+            buttonOk.Text = Resources.ButtonStopLabel;
+            timer.Start();
 
             //Perform random mouse function
             MouseMoves.RandomMouseMove(random);
@@ -198,6 +241,6 @@ namespace MMA
             }
         }
         #endregion
-#endregion
+        #endregion
     }
 }
