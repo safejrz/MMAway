@@ -101,7 +101,7 @@ namespace MMA
             timer.Stop();
             if (shouldBeRunning)
             {
-                MouseMoves.MoveMouse(random);
+                MouseMoves.RandomMoveMouse(random);
                 WriteRandomText();
 
                 if (pass == 0)
@@ -110,12 +110,12 @@ namespace MMA
                 }
                 if (pass > 2 && random.Next(0, 3) <= pass)
                 {
-                    MouseMoves.RandomMouseMove(random);
+                    MouseMoves.MouseMovePattern(random, Location);
                     WriteRandomText();
                 }
                 if (pass >= 4)
                 {
-                    MouseMoves.MoveMouse(random);
+                    MouseMoves.RandomMoveMouse(random);
                     pass = 0;
                     ClearText();
                 }
@@ -150,8 +150,8 @@ namespace MMA
             buttonOk.Text = Resources.ButtonStopLabel;
             timer.Start();
 
-            //Perform random mouse function
-            MouseMoves.RandomMouseMove(random);
+            //Perform a pre-defined mouse move pattern
+            MouseMoves.MouseMovePattern(random, Location);
         }
 
         #region Text Methods

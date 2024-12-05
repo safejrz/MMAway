@@ -21,22 +21,24 @@ namespace MMA
         /// Random object to generate movement.
         /// </summary>
         private static Random? random;
+        private static Point mainWindowPos;
 
         /// <summary>
         /// Scheduled async thread for random mouse move.
         /// </summary>
-        public static void RandomMouseMove(Random senderRandom)
+        public static void MouseMovePattern(Random senderRandom, Point WindowOGPosition)
         {
             random = senderRandom;
+            mainWindowPos = WindowOGPosition;
 
-            var scheduledAsyncMouseMove = new Thread(NextMouseMove);
+            var scheduledAsyncMouseMove = new Thread(ExecuteNextMouseMovePattern);
             scheduledAsyncMouseMove.Start();
         }
 
         /// <summary>
-        /// Method that executes the next mouse actions.
+        /// Moves the mouse in a pre-determined pattern.
         /// </summary>
-        private static void NextMouseMove()
+        private static void ExecuteNextMouseMovePattern()
         {
             //Perform random mouse function
             var action = random?.Next(1, 9);
@@ -57,24 +59,36 @@ namespace MMA
         /// </summary>
         private static void EmulatedMouseClick()
         {
-            // Get the current mouse position
+            var cursorPosCache = new Point(Cursor.Position.X, Cursor.Position.Y);
+
+            //Move the cursor to where the mouse-click should occur:
+            Cursor.Position = new Point(mainWindowPos.X + 10, mainWindowPos.Y + 10);
+
+            // Get the current cursor position.
             uint x = (uint)Cursor.Position.X;
             uint y = (uint)Cursor.Position.Y;
 
-            // Perform the mouse click
+            // Perform the mouse click.
             mouse_event(MOUSEEVENTF_LEFTDOWN | MOUSEEVENTF_LEFTUP, x, y, 0, UIntPtr.Zero);
+
+            //Return the mouse to where it was originally.
+            Cursor.Position = new Point(cursorPosCache.X, cursorPosCache.Y);
         }
 
-        public static void MoveMouse(Random senderRandom)
+        /// <summary>
+        /// Moves the mouse in a random way.
+        /// </summary>
+        /// <param name="senderRandom">Random object sent from the sender</param>
+        public static void RandomMoveMouse(Random senderRandom)
         {
             random = senderRandom;
-            MoveMouse();
+            RandomMoveMouse();
         }
 
         /// <summary>
         /// Method that emulates a random user input (in the form of a mouse movement).
         /// </summary>
-        private static void MoveMouse()
+        private static void RandomMoveMouse()
         {
             if (random == null) return;
             var moves = random.Next(20, 55);
