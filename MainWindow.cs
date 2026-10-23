@@ -47,32 +47,14 @@ namespace MMA
         /// Timer object that will help us triggering the emulated user input each time it occurs
         /// </summary>
         private System.Timers.Timer timer = new System.Timers.Timer();
+        private readonly object timerLock = new ();
 
         /// <summary>
         /// This variable is set to false by default. Used to identify if the program timer should be started or stopped.
         /// </summary>
-        private bool shouldBeRunning = false;
+        private volatile bool shouldBeRunning = false;
+        private volatile bool isClosing;
 
-        /// <summary>
-        /// Dispatcher to modify the textbox in the UI
-        /// </summary>
-        /// <param name="text"></param>
-        delegate void SetTextCallback(string text);
-
-        /// <summary>
-        /// Dispatcher to set the focus on the textbox in the UI
-        /// </summary>
-        delegate void FocusTextBoxCallBack();
-
-        /// <summary>
-        /// Dispatcher to clear the textbox in the UI
-        /// </summary>
-        delegate void ClearTextBoxCallback();
-
-        /// <summary>
-        /// Dispatcher to set the focus on the main window
-        /// </summary>
-        delegate void WindowFocusCallBack();
         #endregion
 
         /// <summary>
@@ -89,6 +71,19 @@ namespace MMA
             InitializeComponent();
             timer.Interval = random.Next(10000, 15000);
             timer.Elapsed += Timer_Elapsed;
+            FormClosing += MainWindow_FormClosing;
+        }
+
+        private void MainWindow_FormClosing(object? sender, FormClosingEventArgs e)
+        {
+            lock (timerLock)
+            {
+                isClosing = true;
+                shouldBeRunning = false;
+                timer.Stop();
+                timer.Elapsed -= Timer_Elapsed;
+                timer.Dispose();
+            }
         }
 
         /// <summary>
@@ -98,11 +93,25 @@ namespace MMA
         /// <param name="e">Event Arguments</param>
         private void Timer_Elapsed(object? sender, System.Timers.ElapsedEventArgs e)
         {
-            timer.Stop();
-            if (shouldBeRunning)
+            lock (timerLock)
             {
+                if (!shouldBeRunning || isClosing)
+                {
+                    return;
+                }
+                timer.Stop();
+            }
+            try
+            {
+                if(!shouldBeRunning || isClosing)
+                {
+                    return;
+                }
+
                 MouseMoves.RandomMoveMouse(random);
+                if(isClosing) return;
                 WriteRandomText();
+                if(isClosing) return;
 
                 if (pass == 0)
                 {
@@ -111,17 +120,29 @@ namespace MMA
                 if (pass > 2 && random.Next(0, 3) <= pass)
                 {
                     MouseMoves.MouseMovePattern(random, Location);
+                    if(isClosing) return;
                     WriteRandomText();
                 }
+                if(isClosing) return;
                 if (pass >= 4)
                 {
                     MouseMoves.RandomMoveMouse(random);
+                    if(isClosing) return;
                     pass = 0;
                     ClearText();
                 }
                 pass++;
-                timer.Interval = random.Next(5000, 15000);
-                timer.Start();
+            }
+            finally
+            {
+                lock(timerLock)
+                {
+                    if(!isClosing && shouldBeRunning)
+                    {
+                        timer.Interval = random.Next(5000, 15000);
+                        timer.Start();
+                    }
+                }
             }
         }
 
@@ -168,31 +189,27 @@ namespace MMA
         /// </summary>
         private void WriteRandomText()
         {
+            if(isClosing) return;
             SetTextBoxFocus();
             var repeat = random.Next(2, 7);
 
-            for (int i = 0; i < repeat; i++)
+            for (int i = 0; i < repeat && !isClosing; i++)
             {
                 var delayInMotion = repeat * random.Next(20, 100);
                 Char c = Convert.ToChar(random.Next(48, 122));
-                SetTextboxText(textBox.Text + c.ToString());
+                SetTextboxText(c.ToString());
                 Thread.Sleep(delayInMotion);
             }
-            SetWindowFocus();
+            if(!isClosing)
+            {
+                InvokeWhileOpen(() => Focus());
+            }
         }
 
         #region Delegate handlers
         private void SetWindowFocus()
         {
-            if (this.InvokeRequired)
-            {
-                WindowFocusCallBack d = new WindowFocusCallBack(SetWindowFocus);
-                Invoke(d, null);
-            }
-            else
-            {
-                this.Focus();
-            }
+            InvokeWhileOpen(() => Focus());
         }
 
         /// <summary>
@@ -201,43 +218,46 @@ namespace MMA
         /// <param name="text"></param>
         private void SetTextboxText(string text)
         {
-            // InvokeRequired required compares the thread ID of the
-            // calling thread to the thread ID of the creating thread.
-            // If these threads are different, it returns true.
-            if (textBox.InvokeRequired)
-            {
-                SetTextCallback d = new SetTextCallback(SetTextboxText);
-                Invoke(d, new object[] { text });
-            }
-            else
-            {
-                textBox.Text = text;
-            }
+            InvokeWhileOpen(() => textBox.Text += text);
         }
 
         private void SetTextBoxFocus()
         {
-            if (textBox.InvokeRequired)
-            {
-                FocusTextBoxCallBack d = new FocusTextBoxCallBack(SetTextBoxFocus);
-                Invoke(d, null);
-            }
-            else
-            {
-                textBox.Focus();
-            }
+            InvokeWhileOpen(() => textBox.Focus());
         }
 
         private void SetTextBoxClear()
         {
-            if (textBox.InvokeRequired)
+            InvokeWhileOpen(() => textBox.Clear());
+        }
+
+        private void InvokeWhileOpen(Action action)
+        {
+            if (isClosing || IsDisposed || Disposing)
             {
-                ClearTextBoxCallback d = new ClearTextBoxCallback(SetTextBoxClear);
-                Invoke(d, null);
+                return;
             }
-            else
+
+            if (InvokeRequired)
             {
-                textBox.Clear();
+                try
+                {
+                    Invoke(action);
+                }
+                catch (ObjectDisposedException) when (isClosing || IsDisposed || Disposing)
+                {
+                    // Ignore if the object is disposed
+                }
+                catch (InvalidOperationException) when (isClosing || IsDisposed || Disposing)
+                {
+                    // Ignore if the object is disposed
+                }
+                return;
+            }
+
+            if (!isClosing && !IsDisposed && !Disposing)
+            {
+                action();
             }
         }
         #endregion
