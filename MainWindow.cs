@@ -1,246 +1,148 @@
+using MMA.Input;
 using MMA.Properties;
-using System.Runtime.InteropServices;
 
 namespace MMA
 {
-    /// <summary>
-    /// Main window for this project
-    /// </summary>
     public partial class MainWindow : Form
     {
-        /// <summary>
-        /// Code to prevent going into sleep-mode.
-        /// </summary>
-        /// <param name="esFlags"></param>
-        /// <returns>Nothing</returns>
-        [DllImport("kernel32.dll", SetLastError = true)]
-        static extern bool SetThreadExecutionState(EXECUTION_STATE esFlags);
+        private readonly IInputInjector input = new WindowsInput();
+        private readonly IKeepAwake keepAwake = new WindowsKeepAwake();
+        private readonly ActivityEngine engine;
+        private sealed record WindowPosition(Point Value);
+        private WindowPosition windowPosition = new(Point.Empty);
+        private bool running;
+        private int session;
 
-        /// <summary>
-        /// Static enum flags, part of the code to prevent going into sleep-mode.
-        /// </summary>
-        [Flags]
-        enum EXECUTION_STATE : uint
-        {
-            ES_CONTINUOUS = 0x80000000,
-            ES_SYSTEM_REQUIRED = 0x00000001,
-            ES_DISPLAY_REQUIRED = 0x00000002
-        }
-
-        #region Fields
-        /// <summary>
-        /// Keeps track of where is the original mouse position to avoid colliding with the screen edges
-        /// </summary>
-        Point OgStart;
-
-        /// <summary>
-        /// Keeps track of how many random moves had occurred to insert another random action
-        /// </summary>
-        int pass = 0;
-
-        /// <summary>
-        /// Random instance which will help us add unpredictability to the emulated actions and when they occur
-        /// </summary>
-        private Random random = new Random(DateTime.Now.Millisecond);
-
-        /// <summary>
-        /// Timer object that will help us triggering the emulated user input each time it occurs
-        /// </summary>
-        private System.Timers.Timer timer = new System.Timers.Timer();
-
-        /// <summary>
-        /// This variable is set to false by default. Used to identify if the program timer should be started or stopped.
-        /// </summary>
-        private bool shouldBeRunning = false;
-
-        /// <summary>
-        /// Dispatcher to modify the textbox in the UI
-        /// </summary>
-        /// <param name="text"></param>
-        delegate void SetTextCallback(string text);
-
-        /// <summary>
-        /// Dispatcher to set the focus on the textbox in the UI
-        /// </summary>
-        delegate void FocusTextBoxCallBack();
-
-        /// <summary>
-        /// Dispatcher to clear the textbox in the UI
-        /// </summary>
-        delegate void ClearTextBoxCallback();
-
-        /// <summary>
-        /// Dispatcher to set the focus on the main window
-        /// </summary>
-        delegate void WindowFocusCallBack();
-        #endregion
-
-        /// <summary>
-        /// Initialize MainWindow
-        /// </summary>
         public MainWindow()
         {
-            //Obtain screen size to get the center
-            var primaryScreen = Screen.PrimaryScreen ?? Screen.AllScreens.FirstOrDefault();
-            Size screenSize = primaryScreen?.Bounds.Size ?? new Size(512, 384);
-            OgStart = new Point(screenSize.Width / 4, (screenSize.Height / 5) * 4);
-            Location = new Point(screenSize.Width / 10, screenSize.Height / 5);
-
+            var bounds = (Screen.PrimaryScreen ?? Screen.AllScreens.FirstOrDefault())?.Bounds
+                ?? new Rectangle(0, 0, 512, 384);
+            var home = new Point(bounds.X + bounds.Width / 4, bounds.Y + bounds.Height / 5 * 4);
             InitializeComponent();
-            timer.Interval = random.Next(10000, 15000);
-            timer.Elapsed += Timer_Elapsed;
+            Location = new Point(bounds.X + bounds.Width / 10, bounds.Y + bounds.Height / 5);
+            UpdateWindowPosition();
+            Move += (_, _) => UpdateWindowPosition();
+            engine = new ActivityEngine(input, home, () => Volatile.Read(ref windowPosition).Value,
+                text => PostToSession(() => textBox.AppendText(text)),
+                () => PostToSession(textBox.Clear), ReportEngineError);
         }
 
-        /// <summary>
-        /// Timer Tick handler
-        /// </summary>
-        /// <param name="sender">Event sender</param>
-        /// <param name="e">Event Arguments</param>
-        private void Timer_Elapsed(object? sender, System.Timers.ElapsedEventArgs e)
-        {
-            timer.Stop();
-            if (shouldBeRunning)
-            {
-                MouseMoves.RandomMoveMouse(random);
-                WriteRandomText();
+        private void UpdateWindowPosition() => Volatile.Write(ref windowPosition, new WindowPosition(Location));
 
-                if (pass == 0)
+        private void PostToSession(Action action)
+        {
+            var postedSession = Volatile.Read(ref session);
+            BeginInvoke(new Action(() =>
+            {
+                if (running && postedSession == session) action();
+            }));
+        }
+
+        private async void buttonOk_Click(object sender, EventArgs e)
+        {
+            buttonOk.Enabled = false;
+            try
+            {
+                if (running)
                 {
-                    Cursor.Position = OgStart;
+                    await StopActivityAsync();
                 }
-                if (pass > 2 && random.Next(0, 3) <= pass)
+                else
                 {
-                    MouseMoves.MouseMovePattern(random, Location);
-                    WriteRandomText();
+                    keepAwake.Enable();
+                    running = true;
+                    Interlocked.Increment(ref session);
+                    Icon = Resources.RunIcon;
+                    buttonOk.Text = Resources.ButtonStopLabel;
+                    engine.Start();
                 }
-                if (pass >= 4)
+            }
+            catch (Exception ex)
+            {
+                var message = ex.Message;
+                if (running)
                 {
-                    MouseMoves.RandomMoveMouse(random);
-                    pass = 0;
-                    ClearText();
+                    try { await StopActivityAsync(); }
+                    catch (Exception stopError) { message += $"\nCould not stop activity: {stopError.Message}"; }
                 }
-                pass++;
-                timer.Interval = random.Next(5000, 15000);
-                timer.Start();
+                MessageBox.Show(this, message, "MMAway", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            finally
+            {
+                buttonOk.Enabled = true;
             }
         }
 
-        /// <summary>
-        /// Method that handles the click event for the Main window's OK button.
-        /// </summary>
-        /// <param name="sender">Event sender</param>
-        /// <param name="e">Event Arguments</param>
-        private void buttonOk_Click(object sender, EventArgs e)
+        private async Task StopActivityAsync()
         {
-            shouldBeRunning = !shouldBeRunning;
-            var lastOpenedForm = Application.OpenForms.Cast<Form>().Last();
-
-            if (!shouldBeRunning)
+            running = false;
+            Interlocked.Increment(ref session);
+            try
             {
-                SetThreadExecutionState(EXECUTION_STATE.ES_CONTINUOUS);
-                lastOpenedForm.Icon = Resources.StopIcon;
-                buttonOk.Text = Resources.ButtonStartLabel;
-                timer.Stop();
+                await engine.StopAsync();
+            }
+            finally
+            {
+                try { keepAwake.Disable(); }
+                finally
+                {
+                    Icon = Resources.StopIcon;
+                    buttonOk.Text = Resources.ButtonStartLabel;
+                }
+            }
+        }
+
+        private void ReportEngineError(Exception error)
+        {
+            var failedSession = Volatile.Read(ref session);
+            BeginInvoke(new Action(async () => await HandleEngineErrorAsync(error, failedSession)));
+        }
+
+        private async Task HandleEngineErrorAsync(Exception error, int failedSession)
+        {
+            if (!running || failedSession != session) return;
+            buttonOk.Enabled = false;
+            var message = $"Activity stopped: {error.Message}";
+            try
+            {
+                await StopActivityAsync();
+            }
+            catch (Exception ex)
+            {
+                message += $"\nCould not stop activity: {ex.Message}";
+            }
+            finally
+            {
+                buttonOk.Enabled = true;
+            }
+            MessageBox.Show(this, message, "MMAway", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+
+        protected override void OnFormClosing(FormClosingEventArgs e)
+        {
+            base.OnFormClosing(e);
+            if (e.Cancel) return;
+            if (!buttonOk.Enabled)
+            {
+                e.Cancel = true;
                 return;
             }
 
-            SetThreadExecutionState(EXECUTION_STATE.ES_CONTINUOUS | EXECUTION_STATE.ES_SYSTEM_REQUIRED | EXECUTION_STATE.ES_DISPLAY_REQUIRED);
-            Cursor.Position = OgStart;
-            lastOpenedForm.Icon = Resources.RunIcon;
-            buttonOk.Text = Resources.ButtonStopLabel;
-            timer.Start();
-
-            //Perform a pre-defined mouse move pattern
-            MouseMoves.MouseMovePattern(random, Location);
-        }
-
-        #region Text Methods
-        /// <summary>
-        /// Clears the textbox's text
-        /// </summary>
-        private void ClearText()
-        {
-            SetTextBoxClear();
-        }
-
-        /// <summary>
-        /// Writes something random in the textboxt
-        /// </summary>
-        private void WriteRandomText()
-        {
-            SetTextBoxFocus();
-            var repeat = random.Next(2, 7);
-
-            for (int i = 0; i < repeat; i++)
+            running = false;
+            Interlocked.Increment(ref session);
+            try
             {
-                var delayInMotion = repeat * random.Next(20, 100);
-                Char c = Convert.ToChar(random.Next(48, 122));
-                SetTextboxText(textBox.Text + c.ToString());
-                Thread.Sleep(delayInMotion);
+                engine.StopAsync().GetAwaiter().GetResult();
+                keepAwake.Dispose();
+                input.Dispose();
             }
-            SetWindowFocus();
-        }
-
-        #region Delegate handlers
-        private void SetWindowFocus()
-        {
-            if (this.InvokeRequired)
+            catch (Exception ex)
             {
-                WindowFocusCallBack d = new WindowFocusCallBack(SetWindowFocus);
-                Invoke(d, null);
-            }
-            else
-            {
-                this.Focus();
+                e.Cancel = true;
+                Icon = Resources.StopIcon;
+                buttonOk.Text = Resources.ButtonStartLabel;
+                MessageBox.Show(this, $"Could not close MMAway: {ex.Message}", "MMAway", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
-
-        /// <summary>
-        /// Method to be called by the dispatcher to modify the textbox in the UI
-        /// </summary>
-        /// <param name="text"></param>
-        private void SetTextboxText(string text)
-        {
-            // InvokeRequired required compares the thread ID of the
-            // calling thread to the thread ID of the creating thread.
-            // If these threads are different, it returns true.
-            if (textBox.InvokeRequired)
-            {
-                SetTextCallback d = new SetTextCallback(SetTextboxText);
-                Invoke(d, new object[] { text });
-            }
-            else
-            {
-                textBox.Text = text;
-            }
-        }
-
-        private void SetTextBoxFocus()
-        {
-            if (textBox.InvokeRequired)
-            {
-                FocusTextBoxCallBack d = new FocusTextBoxCallBack(SetTextBoxFocus);
-                Invoke(d, null);
-            }
-            else
-            {
-                textBox.Focus();
-            }
-        }
-
-        private void SetTextBoxClear()
-        {
-            if (textBox.InvokeRequired)
-            {
-                ClearTextBoxCallback d = new ClearTextBoxCallback(SetTextBoxClear);
-                Invoke(d, null);
-            }
-            else
-            {
-                textBox.Clear();
-            }
-        }
-        #endregion
-        #endregion
     }
 }
