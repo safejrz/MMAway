@@ -45,11 +45,11 @@ internal sealed class OptionsForm : Form
         general.Content.Controls.Add(Heading("Activity interval (seconds)"));
         general.Content.Controls.Add(RangeRow(intervalMin, intervalMax));
         general.Content.Controls.Add(Note("Long intervals can allow Teams to become Away. Delays may also include time spent typing or moving."));
-        general.Content.Controls.Add(Heading("Global hotkey (not active yet)"));
+        general.Content.Controls.Add(Heading("Global hotkey"));
         general.Content.Controls.Add(hotkey);
-        general.Content.Controls.Add(Heading("Auto-stop minutes (not active yet)"));
+        general.Content.Controls.Add(Note("Use Ctrl, Alt, Shift, or Win with A-Z, 0-9, F1-F12, Space, Enter, Esc, or Tab."));
+        general.Content.Controls.Add(Heading("Auto-stop minutes (0 disables)"));
         general.Content.Controls.Add(autoStop);
-        general.Content.Controls.Add(Note("These values are saved for a later feature. Neither hotkeys nor auto-stop work in this version."));
         general.Content.Controls.Add(showSessionInfo);
 
         mouse.Content.Controls.Add(Heading("Resume after mouse is idle (seconds)"));

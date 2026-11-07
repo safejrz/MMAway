@@ -6,7 +6,8 @@ MMAway is a small **Windows-only** desktop utility that simulates occasional mou
 
 ## Features
 
-- Start and stop activity from the app window.
+- Start and stop activity from the app window or with a configurable global hotkey (default `Ctrl+Alt+M`), including while another app is focused. Registration failures are reported; the previous hotkey remains active if a replacement fails.
+- Optionally stop each session automatically after a configured number of minutes (0 disables auto-stop).
 - Make randomized mouse movements inside MMAway's text box at variable intervals, including a zero-distance mouse input to signal activity to Windows.
 - Open near the right side of the primary work area, matching the Avalonia version.
 - Draw one of ten cursor patterns (square, circle, triangle, two hourglasses, spirals, oval, ice-cream cone, or figure eight); selected patterns do not repeat consecutively unless only one is selected. Pattern duration is 2–5 seconds, scaled by the configurable speed (default 1.5x).
@@ -19,7 +20,7 @@ MMAway is a small **Windows-only** desktop utility that simulates occasional mou
 - Ask Windows to keep the system and display awake while activity is running, and restore the normal sleep behavior when stopped.
 - Change the app icon and show an animated running indicator while activity is running.
 
-Long activity intervals or repeated mouse interaction can delay synthetic activity and allow Teams to become Away; typing and movement can also add time between activity signals. Global hotkey and auto-stop values can be saved but are not active yet.
+Long activity intervals or repeated mouse interaction can delay synthetic activity and allow Teams to become Away; typing and movement can also add time between activity signals. Minimized windows pause generated activity, even if a hotkey has started the session. Auto-stop uses the elapsed session time, including pauses.
 
 To observe Windows idle time during a field test, run `powershell -File .\scripts\windows-idle-probe.ps1` while MMAway is running. The probe writes a CSV and refuses to overwrite an existing file; it measures Windows idle time, not Teams presence.
 

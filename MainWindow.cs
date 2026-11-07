@@ -1,5 +1,7 @@
 using MMA.Input;
 using MMA.Properties;
+using System.ComponentModel;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 
 namespace MMA
@@ -7,16 +9,23 @@ namespace MMA
     public partial class MainWindow : Form
     {
         private const int WmNcLButtonDown = 0x00A1;
+        private const int WmHotkey = 0x0312;
         private const int HtCaption = 2;
         private readonly IInputInjector input = new WindowsInput();
         private readonly IKeepAwake keepAwake = new WindowsKeepAwake();
         private readonly ActivityEngine engine;
-        private readonly SettingsStore settingsStore = new();
+        private readonly SettingsStore settingsStore;
         private ActivitySettings settings = new();
         private bool settingsReady;
         private sealed record BoundsSnapshot(Rectangle? Bounds, IntPtr Window, IntPtr Output, bool Active);
         private BoundsSnapshot boundsSnapshot = new(null, IntPtr.Zero, IntPtr.Zero, false);
         private bool running;
+        private bool transitionInProgress;
+        private bool optionsInProgress;
+        private WindowsGlobalHotkey? globalHotkey;
+        private System.Windows.Forms.Timer autoStopTimer = null!;
+        private long autoStopStarted;
+        private int autoStopMilliseconds;
         private int session;
         private int statsTicks;
 
@@ -32,11 +41,16 @@ namespace MMA
         [DllImport("user32.dll")]
         private static extern IntPtr SendMessage(IntPtr window, int message, IntPtr wParam, IntPtr lParam);
 
-        public MainWindow()
+        public MainWindow() : this(new SettingsStore()) { }
+
+        internal MainWindow(SettingsStore settingsStore)
         {
+            this.settingsStore = settingsStore;
             var workingArea = (Screen.PrimaryScreen ?? Screen.AllScreens.FirstOrDefault())?.WorkingArea
                 ?? new Rectangle(0, 0, 1024, 768);
             InitializeComponent();
+            autoStopTimer = new System.Windows.Forms.Timer(components!);
+            autoStopTimer.Tick += AutoStopTimer_Tick;
             buttonOk.Enabled = false;
             optionsButton.Enabled = false;
             Location = WindowPlacement.GetStartupPosition(workingArea, Size);
@@ -58,11 +72,15 @@ namespace MMA
 
         private async void LoadSettingsAsync(object? sender, EventArgs e)
         {
+            optionsInProgress = true;
             try
             {
-                Volatile.Write(ref settings, await settingsStore.LoadAsync());
+                var loaded = await settingsStore.LoadAsync();
+                if (IsDisposed || Disposing) return;
+                Volatile.Write(ref settings, loaded);
                 settingsReady = true;
                 buttonOk.Enabled = true;
+                ConfigureGlobalHotkey();
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Text.Json.JsonException or ArgumentException)
             {
@@ -71,22 +89,26 @@ namespace MMA
             }
             finally
             {
-                optionsButton.Enabled = true;
+                optionsInProgress = false;
+                if (!IsDisposed && !Disposing) optionsButton.Enabled = true;
             }
         }
 
         private async void optionsButton_Click(object? sender, EventArgs e)
         {
-            using var dialog = new OptionsForm(Volatile.Read(ref settings));
-            if (dialog.ShowDialog(this) != DialogResult.OK || dialog.SavedSettings is not { } updated) return;
-            optionsButton.Enabled = false;
-            buttonOk.Enabled = false;
+            if (optionsInProgress || transitionInProgress || running) return;
+            optionsInProgress = true;
             try
             {
+                using var dialog = new OptionsForm(Volatile.Read(ref settings));
+                if (dialog.ShowDialog(this) != DialogResult.OK || dialog.SavedSettings is not { } updated) return;
+                optionsButton.Enabled = false;
+                buttonOk.Enabled = false;
                 await settingsStore.SaveAsync(updated);
                 Volatile.Write(ref settings, updated);
                 settingsReady = true;
                 sessionLabel.Visible = updated.ShowSessionInfo && sessionLabel.Text.Length > 0;
+                ConfigureGlobalHotkey();
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
             {
@@ -94,9 +116,57 @@ namespace MMA
             }
             finally
             {
+                optionsInProgress = false;
                 optionsButton.Enabled = true;
                 buttonOk.Enabled = settingsReady;
             }
+        }
+
+        private void ConfigureGlobalHotkey()
+        {
+            globalHotkey ??= new WindowsGlobalHotkey(Handle);
+            try
+            {
+                globalHotkey.Configure(settings.GlobalHotkey);
+            }
+            catch (Win32Exception ex)
+            {
+                MessageBox.Show(this, $"Could not activate {settings.GlobalHotkey}: {ex.Message}\nThe previous hotkey, if any, remains active. Choose another hotkey in Options.",
+                    "MMAway", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+        }
+
+        protected override void OnHandleCreated(EventArgs e)
+        {
+            base.OnHandleCreated(e);
+            if (settingsReady) ConfigureGlobalHotkey();
+        }
+
+        protected override void OnHandleDestroyed(EventArgs e)
+        {
+            try
+            {
+                globalHotkey?.Dispose();
+            }
+            catch (Win32Exception ex)
+            {
+                MessageBox.Show($"Could not release the global hotkey: {ex.Message}", "MMAway", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            finally
+            {
+                globalHotkey = null;
+            }
+            base.OnHandleDestroyed(e);
+        }
+
+        protected override void WndProc(ref Message m)
+        {
+            if (m.Msg == WmHotkey && globalHotkey?.IsMessage(m.WParam) == true)
+            {
+                _ = ToggleActivityAsync();
+                return;
+            }
+            base.WndProc(ref m);
         }
 
         private void titleBar_MouseDown(object? sender, MouseEventArgs e)
@@ -214,8 +284,12 @@ namespace MMA
             }));
         }
 
-        private async void buttonOk_Click(object sender, EventArgs e)
+        private async void buttonOk_Click(object sender, EventArgs e) => await ToggleActivityAsync();
+
+        private async Task ToggleActivityAsync()
         {
+            if (!settingsReady || optionsInProgress || transitionInProgress || IsDisposed || Disposing) return;
+            transitionInProgress = true;
             buttonOk.Enabled = false;
             try
             {
@@ -233,6 +307,7 @@ namespace MMA
                     engine.Start();
                     optionsButton.Enabled = false;
                     SetRunningVisuals(true);
+                    StartAutoStop();
                 }
             }
             catch (Exception ex)
@@ -247,12 +322,38 @@ namespace MMA
             }
             finally
             {
-                buttonOk.Enabled = true;
+                transitionInProgress = false;
+                buttonOk.Enabled = settingsReady;
             }
+        }
+
+        private void StartAutoStop()
+        {
+            autoStopTimer.Stop();
+            autoStopMilliseconds = settings.AutoStopMinutes * 60_000;
+            if (autoStopMilliseconds == 0) return;
+            autoStopStarted = Stopwatch.GetTimestamp();
+            autoStopTimer.Interval = autoStopMilliseconds;
+            autoStopTimer.Start();
+        }
+
+        private async void AutoStopTimer_Tick(object? sender, EventArgs e)
+        {
+            if (!running || autoStopMilliseconds == 0) return;
+            var remaining = autoStopMilliseconds - Stopwatch.GetElapsedTime(autoStopStarted).TotalMilliseconds;
+            if (remaining > 0)
+            {
+                autoStopTimer.Interval = Math.Max(1, (int)Math.Ceiling(remaining));
+                return;
+            }
+            autoStopTimer.Stop();
+            await ToggleActivityAsync();
         }
 
         private async Task StopActivityAsync()
         {
+            autoStopTimer.Stop();
+            autoStopMilliseconds = 0;
             running = false;
             Interlocked.Increment(ref session);
             SetRunningVisuals(false);
@@ -284,6 +385,7 @@ namespace MMA
         private async Task HandleEngineErrorAsync(Exception error, int failedSession)
         {
             if (!running || failedSession != session) return;
+            transitionInProgress = true;
             buttonOk.Enabled = false;
             var message = $"Activity stopped: {error.Message}";
             try
@@ -296,7 +398,8 @@ namespace MMA
             }
             finally
             {
-                buttonOk.Enabled = true;
+                transitionInProgress = false;
+                buttonOk.Enabled = settingsReady;
             }
             MessageBox.Show(this, message, "MMAway", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
@@ -305,12 +408,14 @@ namespace MMA
         {
             base.OnFormClosing(e);
             if (e.Cancel) return;
-            if ((!buttonOk.Enabled && settingsReady) || (!optionsButton.Enabled && !running))
+            if (transitionInProgress || optionsInProgress || (!buttonOk.Enabled && settingsReady) || (!optionsButton.Enabled && !running))
             {
                 e.Cancel = true;
                 return;
             }
 
+            autoStopTimer.Stop();
+            autoStopMilliseconds = 0;
             running = false;
             Interlocked.Increment(ref session);
             SetRunningVisuals(false);

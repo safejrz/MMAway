@@ -1,3 +1,5 @@
+using MMA.Input;
+
 namespace MMA;
 
 public sealed record ActivitySettings
@@ -36,38 +38,12 @@ public sealed record ActivitySettings
             throw new ArgumentOutOfRangeException(nameof(UserIdleSeconds), "Resume delay must be between 1 and 3600 seconds.");
         if (AutoStopMinutes is < 0 or > 1440)
             throw new ArgumentOutOfRangeException(nameof(AutoStopMinutes), "Auto-stop must be between 0 and 1440 minutes.");
-        if (string.IsNullOrWhiteSpace(GlobalHotkey))
-            throw new ArgumentException("Global hotkey cannot be empty.");
-        ValidateHotkey(GlobalHotkey);
+        _ = HotkeyGesture.Parse(GlobalHotkey);
     }
 
     private static void ValidateRange(int minimum, int maximum, int lower, int upper, string name)
     {
         if (minimum < lower || minimum > upper || maximum < minimum || maximum > upper)
             throw new ArgumentException($"{name} must be between {lower} and {upper}, with maximum at least minimum.");
-    }
-
-    private static void ValidateHotkey(string value)
-    {
-        var parts = value.Split('+', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
-        if (parts.Length < 2) throw new ArgumentException("Use a modifier and key, for example Ctrl+Alt+M.");
-        var modifiers = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var part in parts[..^1])
-        {
-            var modifier = part.ToLowerInvariant() switch
-            {
-                "ctrl" or "control" => "ctrl",
-                "alt" => "alt",
-                "shift" => "shift",
-                "win" or "super" or "meta" => "win",
-                _ => throw new ArgumentException($"Unsupported hotkey modifier '{part}'.")
-            };
-            if (!modifiers.Add(modifier)) throw new ArgumentException($"Duplicate hotkey modifier '{part}'.");
-        }
-        var key = parts[^1].ToUpperInvariant();
-        if (key.Length == 1 && char.IsAsciiLetterOrDigit(key[0])) return;
-        if (key is "SPACE" or "ENTER" or "ESC" or "TAB") return;
-        if (key.Length is 2 or 3 && key[0] == 'F' && int.TryParse(key[1..], out var number) && number is >= 1 and <= 12) return;
-        throw new ArgumentException($"Unsupported hotkey key '{parts[^1]}'. Use A-Z, 0-9, F1-F12, Space, Enter, Esc, or Tab.");
     }
 }
