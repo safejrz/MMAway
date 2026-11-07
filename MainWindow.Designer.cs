@@ -31,14 +31,21 @@ namespace MMA
         /// </summary>
         private void InitializeComponent()
         {
+            components = new System.ComponentModel.Container();
             buttonOk = new Button();
             textBox = new TextBox();
             panel = new Panel();
+            runningIndicator = new Panel();
+            leftSpinner = new SpinnerControl();
+            rightSpinner = new SpinnerControl();
+            activityProgress = new RunningProgressControl();
+            spinnerTimer = new System.Windows.Forms.Timer(components);
             titleBar = new Panel();
             titleLabel = new Label();
             minimizeButton = new Button();
             closeButton = new Button();
             panel.SuspendLayout();
+            runningIndicator.SuspendLayout();
             titleBar.SuspendLayout();
             SuspendLayout();
             // 
@@ -88,8 +95,33 @@ namespace MMA
             panel.Margin = new Padding(0);
             panel.Name = "panel";
             panel.Padding = new Padding(1);
-            panel.Size = new Size(326, 352);
+            panel.Size = new Size(326, 334);
             panel.TabIndex = 0;
+            // runningIndicator
+            runningIndicator.Controls.Add(leftSpinner);
+            runningIndicator.Controls.Add(rightSpinner);
+            runningIndicator.Controls.Add(activityProgress);
+            runningIndicator.Location = new Point(12, 388);
+            runningIndicator.Name = "runningIndicator";
+            runningIndicator.Size = new Size(326, 24);
+            runningIndicator.Visible = false;
+            // leftSpinner
+            leftSpinner.Location = new Point(0, 2);
+            leftSpinner.Name = "leftSpinner";
+            leftSpinner.Size = new Size(20, 20);
+            // rightSpinner
+            rightSpinner.Location = new Point(306, 2);
+            rightSpinner.Name = "rightSpinner";
+            rightSpinner.Size = new Size(20, 20);
+            // activityProgress
+            activityProgress.Font = new Font("Segoe UI", 8F, FontStyle.Bold);
+            activityProgress.Location = new Point(28, 0);
+            activityProgress.Name = "activityProgress";
+            activityProgress.Size = new Size(270, 24);
+            activityProgress.Text = "Running";
+            // spinnerTimer
+            spinnerTimer.Interval = 20;
+            spinnerTimer.Tick += spinnerTimer_Tick;
             // titleBar
             titleBar.BackColor = Color.FromArgb(37, 37, 38);
             titleBar.Controls.Add(titleLabel);
@@ -133,15 +165,15 @@ namespace MMA
             closeButton.FlatAppearance.MouseDownBackColor = Color.FromArgb(160, 35, 29);
             closeButton.FlatAppearance.MouseOverBackColor = Color.FromArgb(196, 43, 28);
             closeButton.FlatStyle = FlatStyle.Flat;
-            closeButton.Font = new Font("Segoe UI", 17F);
             closeButton.ForeColor = Color.FromArgb(204, 204, 204);
             closeButton.Location = new Point(310, 0);
             closeButton.Name = "closeButton";
+            closeButton.AccessibleName = "Close";
             closeButton.Size = new Size(40, 32);
             closeButton.TabIndex = 2;
-            closeButton.Text = "×";
             closeButton.UseVisualStyleBackColor = false;
             closeButton.Click += closeButton_Click;
+            closeButton.Paint += closeButton_Paint;
             // MainWindow
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
@@ -149,6 +181,7 @@ namespace MMA
             ClientSize = new Size(350, 500);
             Controls.Add(titleBar);
             Controls.Add(panel);
+            Controls.Add(runningIndicator);
             Controls.Add(buttonOk);
             FormBorderStyle = FormBorderStyle.None;
             ForeColor = Color.FromArgb(204, 204, 204);
@@ -162,6 +195,7 @@ namespace MMA
             Text = "MMAway";
             panel.ResumeLayout(false);
             panel.PerformLayout();
+            runningIndicator.ResumeLayout(false);
             titleBar.ResumeLayout(false);
             ResumeLayout(false);
         }
@@ -171,6 +205,11 @@ namespace MMA
         private Button buttonOk;
         private TextBox textBox;
         private Panel panel;
+        private Panel runningIndicator;
+        private SpinnerControl leftSpinner;
+        private SpinnerControl rightSpinner;
+        private RunningProgressControl activityProgress;
+        private System.Windows.Forms.Timer spinnerTimer;
         private Panel titleBar;
         private Label titleLabel;
         private Button minimizeButton;

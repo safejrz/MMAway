@@ -60,6 +60,41 @@ namespace MMA
 
         private void closeButton_Click(object? sender, EventArgs e) => Close();
 
+        private void closeButton_Paint(object? sender, PaintEventArgs e)
+        {
+            var scale = closeButton.DeviceDpi / 96f;
+            var centerX = closeButton.ClientSize.Width / 2f;
+            var centerY = closeButton.ClientSize.Height / 2f;
+            var radius = 4f * scale;
+            e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+            using var pen = new Pen(closeButton.ForeColor, 1.5f * scale);
+            e.Graphics.DrawLine(pen, centerX - radius, centerY - radius, centerX + radius, centerY + radius);
+            e.Graphics.DrawLine(pen, centerX + radius, centerY - radius, centerX - radius, centerY + radius);
+        }
+
+        private void spinnerTimer_Tick(object? sender, EventArgs e)
+        {
+            leftSpinner.Advance();
+            rightSpinner.Advance();
+            activityProgress.Advance();
+        }
+
+        private void SetRunningVisuals(bool isRunning)
+        {
+            runningIndicator.Visible = isRunning;
+            if (isRunning)
+            {
+                spinnerTimer.Start();
+            }
+            else
+            {
+                spinnerTimer.Stop();
+                leftSpinner.Reset();
+                rightSpinner.Reset();
+                activityProgress.Reset();
+            }
+        }
+
         private void AppendGeneratedText(string text)
         {
             var start = Math.Clamp(textBox.SelectionStart, 0, textBox.TextLength);
@@ -129,6 +164,7 @@ namespace MMA
                     Icon = Resources.RunIcon;
                     buttonOk.Text = Resources.ButtonStopLabel;
                     engine.Start();
+                    SetRunningVisuals(true);
                 }
             }
             catch (Exception ex)
@@ -151,6 +187,7 @@ namespace MMA
         {
             running = false;
             Interlocked.Increment(ref session);
+            SetRunningVisuals(false);
             try
             {
                 await engine.StopAsync();
@@ -204,6 +241,7 @@ namespace MMA
 
             running = false;
             Interlocked.Increment(ref session);
+            SetRunningVisuals(false);
             try
             {
                 engine.StopAsync().GetAwaiter().GetResult();

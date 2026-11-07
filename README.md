@@ -14,7 +14,7 @@ MMAway is a small **Windows-only** desktop utility that simulates occasional mou
 - Pause generated activity while the window is minimized or the text box has no usable bounds; restore the window to resume.
 - Type random characters into MMAway’s own text box; every three or four typing cycles, select a short portion for the next text to replace. It does not type messages into Teams.
 - Ask Windows to keep the system and display awake while activity is running, and restore the normal sleep behavior when stopped.
-- Change the app icon to indicate whether activity is running.
+- Change the app icon and show an animated running indicator while activity is running.
 
 ## Platform support
 
