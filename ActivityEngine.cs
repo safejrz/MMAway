@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using MMA.Input;
 
 namespace MMA;
@@ -11,18 +12,31 @@ public sealed class ActivityEngine
     private readonly Action<string> appendText;
     private readonly Action clearText;
     private readonly Action<Exception> reportError;
+    private readonly Action selectRandomText;
     private const int EdgeMargin = 8;
+    private const int MinMoveMilliseconds = 2000;
+    private const int MaxMoveMilliseconds = 5000;
+    private const double DefaultAggressiveness = 1.5;
+    private static readonly MovementPattern[] MovementPatterns = Enum.GetValues<MovementPattern>();
+    private readonly Stopwatch paceClock = new();
+    private double paceIntervalMilliseconds;
+    private long paceCount;
+    private MovementPattern? lastPattern;
+    private int typingCyclesSinceSelection;
+    private int nextSelectionAfter = 3;
     private CancellationTokenSource? cancellation;
     private Task? loop;
     private int pass;
 
     public ActivityEngine(IInputInjector input, Func<Rectangle?> getActivityBounds,
-        Func<Point, Rectangle, bool> canClick, Action<string> appendText, Action clearText, Action<Exception> reportError)
+        Func<Point, Rectangle, bool> canClick, Action<string> appendText, Action selectRandomText,
+        Action clearText, Action<Exception> reportError)
     {
         this.input = input;
         this.getActivityBounds = getActivityBounds;
         this.canClick = canClick;
         this.appendText = appendText;
+        this.selectRandomText = selectRandomText;
         this.clearText = clearText;
         this.reportError = reportError;
     }
@@ -33,6 +47,7 @@ public sealed class ActivityEngine
     {
         if (cancellation is not null)
             throw new InvalidOperationException("The previous activity session has not been stopped.");
+        pass = 0;
         cancellation = new CancellationTokenSource();
         var token = cancellation.Token;
         loop = Task.Run(() => RunAsync(token));
@@ -113,10 +128,20 @@ public sealed class ActivityEngine
 
     private Rectangle WaitForArea(CancellationToken token)
     {
+        var waited = false;
         while (true)
         {
             token.ThrowIfCancellationRequested();
-            if (TryGetArea(out var area)) return area;
+            if (TryGetArea(out var area))
+            {
+                if (waited && paceClock.IsRunning)
+                {
+                    paceClock.Restart();
+                    paceCount = 0;
+                }
+                return area;
+            }
+            waited = true;
             Pause(100, token);
         }
     }
@@ -153,12 +178,22 @@ public sealed class ActivityEngine
             appendText(((char)random.Next(48, 122)).ToString());
             Pause(repeat * random.Next(20, 100), token);
         }
+        typingCyclesSinceSelection++;
+        if (typingCyclesSinceSelection >= nextSelectionAfter)
+        {
+            WaitForArea(token);
+            selectRandomText();
+            typingCyclesSinceSelection = 0;
+            nextSelectionAfter = random.Next(3, 5);
+        }
     }
 
     private void RunPattern(CancellationToken token)
     {
-        if (random.Next(1, 9) >= 5) MoveInSquare(token);
-        else MoveInCircles(token);
+        token.ThrowIfCancellationRequested();
+        var pattern = ChooseRandomPattern();
+        lastPattern = pattern;
+        MovePattern(pattern, token);
         var area = WaitForArea(token);
         input.SignalActivity();
         var target = Center(area);
@@ -172,6 +207,85 @@ public sealed class ActivityEngine
         if (!token.IsCancellationRequested && TryGetArea(out currentArea) && currentArea == area &&
             input.GetCursorPosition() == target && canClick(target, area))
             MoveTo(original, token);
+    }
+
+    private void MovePattern(MovementPattern pattern, CancellationToken token)
+    {
+        var area = WaitForArea(token);
+        var points = CreatePatternPoints(pattern, area);
+        BeginPaced(points.Length);
+        try
+        {
+            foreach (var point in points)
+            {
+                token.ThrowIfCancellationRequested();
+                WaitForArea(token);
+                MoveTo(point, token);
+                Pace(token);
+            }
+        }
+        finally
+        {
+            paceClock.Reset();
+            paceIntervalMilliseconds = 0;
+        }
+    }
+
+    private Point[] CreatePatternPoints(MovementPattern pattern, Rectangle area)
+    {
+        var center = Center(area);
+        var radius = Math.Max(1, Math.Min(area.Width, area.Height) * 0.38);
+        var halfWidth = Math.Max(1, area.Width * 0.42);
+        var halfHeight = Math.Max(1, area.Height * 0.42);
+        IReadOnlyList<PointF> path = pattern switch
+        {
+            MovementPattern.Square => MovementPatternLibrary.CreateSquare(),
+            MovementPattern.Circle => MovementPatternLibrary.CreateCircle(),
+            MovementPattern.Triangle => MovementPatternLibrary.CreateTriangle(),
+            MovementPattern.VerticalHourglass => MovementPatternLibrary.CreateVerticalHourglass(),
+            MovementPattern.HorizontalHourglass => MovementPatternLibrary.CreateHorizontalHourglass(),
+            MovementPattern.SpiralOut => MovementPatternLibrary.CreateSpiralOut(),
+            MovementPattern.SpiralIn => MovementPatternLibrary.CreateSpiralIn(),
+            MovementPattern.Oval => MovementPatternLibrary.CreateOval(),
+            MovementPattern.IceCreamCone => MovementPatternLibrary.CreateIceCreamCone(),
+            MovementPattern.FigureEight => MovementPatternLibrary.CreateFigureEight(),
+            _ => throw new ArgumentOutOfRangeException(nameof(pattern), pattern, "Unknown movement pattern.")
+        };
+        var preserveAspectRatio = pattern is MovementPattern.Circle or MovementPattern.SpiralOut
+            or MovementPattern.SpiralIn or MovementPattern.HorizontalHourglass;
+        var scaleX = preserveAspectRatio ? radius : halfWidth;
+        var scaleY = preserveAspectRatio ? radius : halfHeight;
+        return path.Select(point => new Point(
+            center.X + (int)Math.Round(point.X * scaleX),
+            center.Y + (int)Math.Round(point.Y * scaleY))).ToArray();
+    }
+
+    private MovementPattern ChooseRandomPattern()
+    {
+        var candidates = lastPattern is { } previous
+            ? MovementPatterns.Where(pattern => pattern != previous).ToArray()
+            : MovementPatterns;
+        return candidates[random.Next(candidates.Length)];
+    }
+
+    private void BeginPaced(int expectedMoves)
+    {
+        var duration = random.Next(MinMoveMilliseconds, MaxMoveMilliseconds + 1);
+        paceIntervalMilliseconds = (double)duration / Math.Max(1, expectedMoves) / DefaultAggressiveness;
+        paceCount = 0;
+        paceClock.Restart();
+    }
+
+    private void Pace(CancellationToken token)
+    {
+        paceCount++;
+        while (true)
+        {
+            token.ThrowIfCancellationRequested();
+            var remaining = paceCount * paceIntervalMilliseconds - paceClock.Elapsed.TotalMilliseconds;
+            if (remaining < 1) return;
+            Pause((int)Math.Clamp(remaining, 1, 100), token);
+        }
     }
 
     private void RandomMove(CancellationToken token)
@@ -198,74 +312,5 @@ public sealed class ActivityEngine
         }
         WaitForArea(token);
         input.SignalActivity();
-    }
-
-    private void MoveInSquare(CancellationToken token)
-    {
-        var area = WaitForArea(token);
-        var size = Math.Max(1, Math.Min(area.Width, area.Height) * 3 / 4);
-        var center = Center(area);
-        MoveTo(new Point(center.X - size / 2, center.Y - size / 2), token);
-        var variance = random.Next(1, 3);
-        for (var i = 0; i < size; i++)
-        {
-            token.ThrowIfCancellationRequested();
-            Move(1, -variance, token); i++; Move(1, variance, token);
-            if (i % 7 == 0) Pause(1, token);
-        }
-        for (var i = 0; i < size; i++)
-        {
-            token.ThrowIfCancellationRequested();
-            Move(-variance, 1, token); i++;
-            if (i % 9 == 0) Pause(1, token);
-            Move(variance, 1, token);
-        }
-        for (var i = 0; i < size; i++)
-        {
-            token.ThrowIfCancellationRequested();
-            Move(-1, -variance, token); i++; Move(-1, variance, token);
-            if (i % 8 == 0) Pause(1, token);
-        }
-        for (var i = 0; i < size; i++)
-        {
-            token.ThrowIfCancellationRequested();
-            Move(-variance, -1, token); i++;
-            if (i % 7 == 0) Pause(1, token);
-            Move(variance, -1, token);
-        }
-    }
-
-    private void MoveInCircles(CancellationToken token)
-    {
-        var area = WaitForArea(token);
-        var size = Math.Max(1, Math.Min(area.Width, area.Height) * 3 / 4);
-        var center = Center(area);
-        MoveTo(new Point(center.X - size / 2, center.Y + size / 2), token);
-        var variance = random.Next(1, 3);
-        for (var i = 0; i < size; i++)
-        {
-            token.ThrowIfCancellationRequested();
-            Move(1, -1, token);
-            if (i % 7 == 0) Pause(1, token);
-        }
-        for (var i = 0; i < size; i++)
-        {
-            token.ThrowIfCancellationRequested();
-            Move(-variance, 1, token); i++; Move(variance, 1, token);
-            if (i % 11 == 0) Pause(1, token);
-        }
-        for (var i = 0; i < size; i++)
-        {
-            token.ThrowIfCancellationRequested();
-            Move(-1, -1, token);
-            if (i % 7 == 0) Pause(1, token);
-        }
-        for (var i = 0; i < size; i++)
-        {
-            token.ThrowIfCancellationRequested();
-            Move(-variance, 1, token); i++;
-            if (i % 9 == 0) Pause(1, token);
-            Move(variance, 1, token);
-        }
     }
 }

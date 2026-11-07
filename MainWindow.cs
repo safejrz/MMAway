@@ -22,10 +22,10 @@ namespace MMA
 
         public MainWindow()
         {
-            var bounds = (Screen.PrimaryScreen ?? Screen.AllScreens.FirstOrDefault())?.Bounds
-                ?? new Rectangle(0, 0, 512, 384);
+            var workingArea = (Screen.PrimaryScreen ?? Screen.AllScreens.FirstOrDefault())?.WorkingArea
+                ?? new Rectangle(0, 0, 1024, 768);
             InitializeComponent();
-            Location = new Point(bounds.X + bounds.Width / 10, bounds.Y + bounds.Height / 5);
+            Location = WindowPlacement.GetStartupPosition(workingArea, Size);
             Move += (_, _) => UpdateActivityBounds();
             Resize += (_, _) => UpdateActivityBounds();
             VisibleChanged += (_, _) => UpdateActivityBounds();
@@ -36,8 +36,32 @@ namespace MMA
             textBox.SizeChanged += (_, _) => UpdateActivityBounds();
             textBox.LocationChanged += (_, _) => UpdateActivityBounds();
             engine = new ActivityEngine(input, () => Volatile.Read(ref boundsSnapshot).Bounds,
-                CanClick, text => PostToSession(() => textBox.AppendText(text)),
+                CanClick, text => PostToSession(() => AppendGeneratedText(text)),
+                () => PostToSession(SelectRandomText),
                 () => PostToSession(textBox.Clear), ReportEngineError);
+        }
+
+        private void AppendGeneratedText(string text)
+        {
+            var start = Math.Clamp(textBox.SelectionStart, 0, textBox.TextLength);
+            var length = Math.Clamp(textBox.SelectionLength, 0, textBox.TextLength - start);
+            if (length == 0)
+            {
+                textBox.AppendText(text);
+                return;
+            }
+
+            textBox.Select(start, length);
+            textBox.SelectedText = text;
+        }
+
+        private void SelectRandomText()
+        {
+            var length = textBox.TextLength;
+            if (length == 0) return;
+            var start = Random.Shared.Next(length);
+            var selectedLength = Random.Shared.Next(1, Math.Min(12, length - start) + 1);
+            textBox.Select(start, selectedLength);
         }
 
         private void UpdateActivityBounds()
