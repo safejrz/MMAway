@@ -9,12 +9,15 @@ MMAway is a small **Windows-only** desktop utility that simulates occasional mou
 - Start and stop activity from the app window.
 - Make randomized mouse movements inside MMAway's text box at variable intervals, including a zero-distance mouse input to signal activity to Windows.
 - Open near the right side of the primary work area, matching the Avalonia version.
-- Draw one of ten cursor patterns (square, circle, triangle, two hourglasses, spirals, oval, ice-cream cone, or figure eight), never repeating consecutively. Movement currently applies Avalonia's default aggressiveness of 1.5x to the 2–5 second base duration; this will become configurable with the settings feature.
+- Draw one of ten cursor patterns (square, circle, triangle, two hourglasses, spirals, oval, ice-cream cone, or figure eight); selected patterns do not repeat consecutively unless only one is selected. Pattern duration is 2–5 seconds, scaled by the configurable speed (default 1.5x).
+- Configure activity intervals, pattern selection, movement speed, typing bursts, and spaces using Options. Settings are saved in `%APPDATA%\MMAway\settings.json`. Options are available while activity is stopped.
 - Occasionally perform a simulated left click in the text box only when MMAway is foreground and the target is unobstructed.
 - Pause generated activity while the window is minimized or the text box has no usable bounds; restore the window to resume.
 - Type random characters into MMAway’s own text box; every three or four typing cycles, select a short portion for the next text to replace. It does not type messages into Teams.
 - Ask Windows to keep the system and display awake while activity is running, and restore the normal sleep behavior when stopped.
 - Change the app icon and show an animated running indicator while activity is running.
+
+Long activity intervals can allow Teams to become Away; typing and movement can add time between activity signals. Global hotkey and auto-stop values can be saved but are not active yet. User-idle pausing and session statistics are also not yet implemented in this Windows version.
 
 ## Platform support
 

@@ -11,6 +11,9 @@ namespace MMA
         private readonly IInputInjector input = new WindowsInput();
         private readonly IKeepAwake keepAwake = new WindowsKeepAwake();
         private readonly ActivityEngine engine;
+        private readonly SettingsStore settingsStore = new();
+        private ActivitySettings settings = new();
+        private bool settingsReady;
         private sealed record BoundsSnapshot(Rectangle? Bounds, IntPtr Window, IntPtr Output, bool Active);
         private BoundsSnapshot boundsSnapshot = new(null, IntPtr.Zero, IntPtr.Zero, false);
         private bool running;
@@ -33,7 +36,10 @@ namespace MMA
             var workingArea = (Screen.PrimaryScreen ?? Screen.AllScreens.FirstOrDefault())?.WorkingArea
                 ?? new Rectangle(0, 0, 1024, 768);
             InitializeComponent();
+            buttonOk.Enabled = false;
+            optionsButton.Enabled = false;
             Location = WindowPlacement.GetStartupPosition(workingArea, Size);
+            Shown += LoadSettingsAsync;
             Move += (_, _) => UpdateActivityBounds();
             Resize += (_, _) => UpdateActivityBounds();
             VisibleChanged += (_, _) => UpdateActivityBounds();
@@ -44,9 +50,51 @@ namespace MMA
             textBox.SizeChanged += (_, _) => UpdateActivityBounds();
             textBox.LocationChanged += (_, _) => UpdateActivityBounds();
             engine = new ActivityEngine(input, () => Volatile.Read(ref boundsSnapshot).Bounds,
-                CanClick, text => PostToSession(() => AppendGeneratedText(text)),
+                CanClick, () => Volatile.Read(ref settings), text => PostToSession(() => AppendGeneratedText(text)),
                 () => PostToSession(SelectRandomText),
                 () => PostToSession(textBox.Clear), ReportEngineError);
+        }
+
+        private async void LoadSettingsAsync(object? sender, EventArgs e)
+        {
+            try
+            {
+                Volatile.Write(ref settings, await settingsStore.LoadAsync());
+                settingsReady = true;
+                buttonOk.Enabled = true;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Text.Json.JsonException or ArgumentException)
+            {
+                MessageBox.Show(this, $"Could not load settings: {ex.Message}\nOpen Options and save valid settings to enable activity.",
+                    "MMAway", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            finally
+            {
+                optionsButton.Enabled = true;
+            }
+        }
+
+        private async void optionsButton_Click(object? sender, EventArgs e)
+        {
+            using var dialog = new OptionsForm(Volatile.Read(ref settings));
+            if (dialog.ShowDialog(this) != DialogResult.OK || dialog.SavedSettings is not { } updated) return;
+            optionsButton.Enabled = false;
+            buttonOk.Enabled = false;
+            try
+            {
+                await settingsStore.SaveAsync(updated);
+                Volatile.Write(ref settings, updated);
+                settingsReady = true;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
+            {
+                MessageBox.Show(this, $"Could not save settings: {ex.Message}", "MMAway", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            finally
+            {
+                optionsButton.Enabled = true;
+                buttonOk.Enabled = settingsReady;
+            }
         }
 
         private void titleBar_MouseDown(object? sender, MouseEventArgs e)
@@ -164,6 +212,7 @@ namespace MMA
                     Icon = Resources.RunIcon;
                     buttonOk.Text = Resources.ButtonStopLabel;
                     engine.Start();
+                    optionsButton.Enabled = false;
                     SetRunningVisuals(true);
                 }
             }
@@ -199,6 +248,7 @@ namespace MMA
                 {
                     Icon = Resources.StopIcon;
                     buttonOk.Text = Resources.ButtonStartLabel;
+                    optionsButton.Enabled = true;
                 }
             }
         }
@@ -233,7 +283,7 @@ namespace MMA
         {
             base.OnFormClosing(e);
             if (e.Cancel) return;
-            if (!buttonOk.Enabled)
+            if ((!buttonOk.Enabled && settingsReady) || (!optionsButton.Enabled && !running))
             {
                 e.Cancel = true;
                 return;
@@ -253,6 +303,7 @@ namespace MMA
                 e.Cancel = true;
                 Icon = Resources.StopIcon;
                 buttonOk.Text = Resources.ButtonStartLabel;
+                optionsButton.Enabled = true;
                 MessageBox.Show(this, $"Could not close MMAway: {ex.Message}", "MMAway", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }

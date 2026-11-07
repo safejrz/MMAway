@@ -41,6 +41,7 @@ namespace MMA
             activityProgress = new RunningProgressControl();
             spinnerTimer = new System.Windows.Forms.Timer(components);
             titleBar = new Panel();
+            optionsButton = new Button();
             titleLabel = new Label();
             minimizeButton = new Button();
             closeButton = new Button();
@@ -124,6 +125,7 @@ namespace MMA
             spinnerTimer.Tick += spinnerTimer_Tick;
             // titleBar
             titleBar.BackColor = Color.FromArgb(37, 37, 38);
+            titleBar.Controls.Add(optionsButton);
             titleBar.Controls.Add(titleLabel);
             titleBar.Controls.Add(minimizeButton);
             titleBar.Controls.Add(closeButton);
@@ -132,6 +134,20 @@ namespace MMA
             titleBar.Size = new Size(350, 32);
             titleBar.TabIndex = 2;
             titleBar.MouseDown += titleBar_MouseDown;
+            // optionsButton
+            optionsButton.AccessibleName = "Options";
+            optionsButton.BackColor = Color.FromArgb(37, 37, 38);
+            optionsButton.FlatAppearance.BorderSize = 0;
+            optionsButton.FlatAppearance.MouseOverBackColor = Color.FromArgb(60, 60, 60);
+            optionsButton.FlatStyle = FlatStyle.Flat;
+            optionsButton.Font = new Font("Segoe UI Symbol", 14F);
+            optionsButton.ForeColor = Color.FromArgb(204, 204, 204);
+            optionsButton.Location = new Point(0, 0);
+            optionsButton.Name = "optionsButton";
+            optionsButton.Size = new Size(40, 32);
+            optionsButton.Text = "⚙";
+            optionsButton.UseVisualStyleBackColor = false;
+            optionsButton.Click += optionsButton_Click;
             // titleLabel
             titleLabel.Font = new Font("Segoe UI", 9F);
             titleLabel.ForeColor = Color.FromArgb(204, 204, 204);
@@ -211,6 +227,7 @@ namespace MMA
         private RunningProgressControl activityProgress;
         private System.Windows.Forms.Timer spinnerTimer;
         private Panel titleBar;
+        private Button optionsButton;
         private Label titleLabel;
         private Button minimizeButton;
         private Button closeButton;

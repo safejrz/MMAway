@@ -9,6 +9,7 @@ public sealed class ActivityEngine
     private readonly Random random = new();
     private readonly Func<Rectangle?> getActivityBounds;
     private readonly Func<Point, Rectangle, bool> canClick;
+    private readonly Func<ActivitySettings> getSettings;
     private readonly Action<string> appendText;
     private readonly Action clearText;
     private readonly Action<Exception> reportError;
@@ -16,25 +17,25 @@ public sealed class ActivityEngine
     private const int EdgeMargin = 8;
     private const int MinMoveMilliseconds = 2000;
     private const int MaxMoveMilliseconds = 5000;
-    private const double DefaultAggressiveness = 1.5;
-    private static readonly MovementPattern[] MovementPatterns = Enum.GetValues<MovementPattern>();
     private readonly Stopwatch paceClock = new();
     private double paceIntervalMilliseconds;
     private long paceCount;
     private MovementPattern? lastPattern;
     private int typingCyclesSinceSelection;
     private int nextSelectionAfter = 3;
+    private int charactersUntilNextSpace;
     private CancellationTokenSource? cancellation;
     private Task? loop;
     private int pass;
 
     public ActivityEngine(IInputInjector input, Func<Rectangle?> getActivityBounds,
-        Func<Point, Rectangle, bool> canClick, Action<string> appendText, Action selectRandomText,
-        Action clearText, Action<Exception> reportError)
+        Func<Point, Rectangle, bool> canClick, Func<ActivitySettings> getSettings,
+        Action<string> appendText, Action selectRandomText, Action clearText, Action<Exception> reportError)
     {
         this.input = input;
         this.getActivityBounds = getActivityBounds;
         this.canClick = canClick;
+        this.getSettings = getSettings;
         this.appendText = appendText;
         this.selectRandomText = selectRandomText;
         this.clearText = clearText;
@@ -47,7 +48,9 @@ public sealed class ActivityEngine
     {
         if (cancellation is not null)
             throw new InvalidOperationException("The previous activity session has not been stopped.");
+        getSettings().Validate();
         pass = 0;
+        charactersUntilNextSpace = 0;
         cancellation = new CancellationTokenSource();
         var token = cancellation.Token;
         loop = Task.Run(() => RunAsync(token));
@@ -76,12 +79,28 @@ public sealed class ActivityEngine
             var area = WaitForArea(token);
             MoveTo(Center(area), token);
             RunPattern(token);
-            var delay = random.Next(10000, 15000);
+            var clock = Stopwatch.StartNew();
+            var nextActivity = clock.ElapsedMilliseconds + random.Next(10000, 15000);
+            var nextTyping = clock.ElapsedMilliseconds + NextTypingInterval();
             while (true)
             {
-                await Task.Delay(delay, token).ConfigureAwait(false);
-                Step(token);
-                delay = random.Next(5000, 15000);
+                var settings = getSettings();
+                var typingDue = settings.TypingEnabled && nextTyping <= nextActivity;
+                var nextDue = typingDue ? nextTyping : nextActivity;
+                var remaining = nextDue - clock.ElapsedMilliseconds;
+                if (remaining > 0) await Task.Delay(TimeSpan.FromMilliseconds(remaining), token).ConfigureAwait(false);
+                token.ThrowIfCancellationRequested();
+                if (typingDue)
+                {
+                    WriteRandomText(token);
+                    nextTyping = clock.ElapsedMilliseconds + NextTypingInterval();
+                }
+                else
+                {
+                    Step(token);
+                    var current = getSettings();
+                    nextActivity = clock.ElapsedMilliseconds + random.Next(current.IntervalMinimumSeconds, current.IntervalMaximumSeconds + 1) * 1000;
+                }
             }
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested) { }
@@ -94,19 +113,20 @@ public sealed class ActivityEngine
     private void Step(CancellationToken token)
     {
         RandomMove(token);
-        WriteRandomText(token);
         if (pass == 0) MoveTo(Center(WaitForArea(token)), token);
         if (pass > 2 && random.Next(0, 3) <= pass)
         {
             RunPattern(token);
-            WriteRandomText(token);
         }
         if (pass >= 4)
         {
             RandomMove(token);
             pass = 0;
-            WaitForArea(token);
-            clearText();
+            if (getSettings().TypingEnabled)
+            {
+                WaitForArea(token);
+                clearText();
+            }
         }
         pass++;
     }
@@ -169,14 +189,31 @@ public sealed class ActivityEngine
         if (token.WaitHandle.WaitOne(milliseconds)) token.ThrowIfCancellationRequested();
     }
 
+    private int NextTypingInterval()
+    {
+        var settings = getSettings();
+        return random.Next(settings.TypingIntervalMinimumSeconds, settings.TypingIntervalMaximumSeconds + 1) * 1000;
+    }
+
     private void WriteRandomText(CancellationToken token)
     {
-        var repeat = random.Next(2, 7);
+        var settings = getSettings();
+        if (!settings.TypingEnabled) return;
+        var repeat = random.Next(settings.TypingBurstMinimumCharacters, settings.TypingBurstMaximumCharacters + 1);
         for (var i = 0; i < repeat; i++)
         {
             WaitForArea(token);
-            appendText(((char)random.Next(48, 122)).ToString());
-            Pause(repeat * random.Next(20, 100), token);
+            if (settings.TypingSpacesEnabled && charactersUntilNextSpace == 0)
+            {
+                appendText(" ");
+                charactersUntilNextSpace = random.Next(settings.SpaceMinimumCharacters, settings.SpaceMaximumCharacters + 1);
+            }
+            else
+            {
+                appendText(((char)random.Next(48, 122)).ToString());
+                if (settings.TypingSpacesEnabled) charactersUntilNextSpace--;
+            }
+            Pause(random.Next(40, 601), token);
         }
         typingCyclesSinceSelection++;
         if (typingCyclesSinceSelection >= nextSelectionAfter)
@@ -262,16 +299,16 @@ public sealed class ActivityEngine
 
     private MovementPattern ChooseRandomPattern()
     {
-        var candidates = lastPattern is { } previous
-            ? MovementPatterns.Where(pattern => pattern != previous).ToArray()
-            : MovementPatterns;
+        var enabled = getSettings().SelectedPatterns.Select(Enum.Parse<MovementPattern>).ToArray();
+        var candidates = enabled.Where(pattern => pattern != lastPattern).ToArray();
+        if (candidates.Length == 0) candidates = enabled;
         return candidates[random.Next(candidates.Length)];
     }
 
     private void BeginPaced(int expectedMoves)
     {
         var duration = random.Next(MinMoveMilliseconds, MaxMoveMilliseconds + 1);
-        paceIntervalMilliseconds = (double)duration / Math.Max(1, expectedMoves) / DefaultAggressiveness;
+        paceIntervalMilliseconds = (double)duration / Math.Max(1, expectedMoves) / getSettings().Aggressiveness;
         paceCount = 0;
         paceClock.Restart();
     }
