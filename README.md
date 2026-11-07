@@ -38,6 +38,7 @@ Visit [MMAway Releases](https://github.com/safejrz/MMAway/releases) for versione
 - **v1.2.0** — Windows-only baseline, field-tested by the project owner. Includes the original WinForms app and basic activity simulation.
 - **v1.3.0 — Movement contained** — Extracted activity engine and Windows input services; cursor movement and clicks are contained within the app's output area; adds ten randomized movement patterns, variable pacing, text selection/replacement, and right-side startup placement.
 - **v1.4.0 — Movement contained and Enhanced UI** — Adds the fixed 350×500 dark-themed window with a custom draggable title bar and minimize/close controls; removes the output area's scrollbar.
+- **v1.5.0 — Configurable and safer activity** — Adds animated running indicators, persistent activity settings, user-aware mouse pause and guarded clicks, optional session statistics, a configurable global hotkey, and auto-stop.
 
 ## Download and run
 
