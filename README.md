@@ -23,9 +23,15 @@ MMAway is a small **Windows-only** desktop utility that simulates occasional mou
 | Windows | Supported; built with .NET 8 Windows Forms and Windows APIs. |
 | Linux and macOS | Not supported by this project. For a separate multiplatform implementation, see [MMAway-Avalonia](https://github.com/safejrz/MMAway-Avalonia). |
 
-## Download and run
+## Releases
 
-Visit [MMAway Releases](https://github.com/safejrz/MMAway/releases) for versioned source archives. The `v1.2.0` release marks the Windows version field-tested by the project owner. The release does not currently include an installer or prebuilt executable.
+Visit [MMAway Releases](https://github.com/safejrz/MMAway/releases) for versioned source archives. Releases do not currently include an installer or prebuilt executable.
+
+- **v1.2.0** — Windows-only baseline, field-tested by the project owner. Includes the original WinForms app and basic activity simulation.
+- **v1.3.0 — Movement contained** — Extracted activity engine and Windows input services; cursor movement and clicks are contained within the app's output area; adds ten randomized movement patterns, variable pacing, text selection/replacement, and right-side startup placement.
+- **v1.4.0 — Movement contained and Enhanced UI** — Adds the fixed 350×500 dark-themed window with a custom draggable title bar and minimize/close controls; removes the output area's scrollbar.
+
+## Download and run
 
 To build and run from source, install the **.NET 8 SDK** on Windows, clone this repository, then run:
 
