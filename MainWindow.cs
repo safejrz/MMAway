@@ -6,6 +6,8 @@ namespace MMA
 {
     public partial class MainWindow : Form
     {
+        private const int WmNcLButtonDown = 0x00A1;
+        private const int HtCaption = 2;
         private readonly IInputInjector input = new WindowsInput();
         private readonly IKeepAwake keepAwake = new WindowsKeepAwake();
         private readonly ActivityEngine engine;
@@ -19,6 +21,12 @@ namespace MMA
 
         [DllImport("user32.dll")]
         private static extern IntPtr WindowFromPoint(Point point);
+
+        [DllImport("user32.dll")]
+        private static extern bool ReleaseCapture();
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr SendMessage(IntPtr window, int message, IntPtr wParam, IntPtr lParam);
 
         public MainWindow()
         {
@@ -40,6 +48,17 @@ namespace MMA
                 () => PostToSession(SelectRandomText),
                 () => PostToSession(textBox.Clear), ReportEngineError);
         }
+
+        private void titleBar_MouseDown(object? sender, MouseEventArgs e)
+        {
+            if (e.Button != MouseButtons.Left) return;
+            ReleaseCapture();
+            SendMessage(Handle, WmNcLButtonDown, new IntPtr(HtCaption), IntPtr.Zero);
+        }
+
+        private void minimizeButton_Click(object? sender, EventArgs e) => WindowState = FormWindowState.Minimized;
+
+        private void closeButton_Click(object? sender, EventArgs e) => Close();
 
         private void AppendGeneratedText(string text)
         {
