@@ -4,6 +4,7 @@ public interface IInputInjector : IDisposable
 {
     Point GetCursorPosition();
     void SetCursorPosition(Point position);
+    void SignalActivity();
     void LeftClick();
 }
 

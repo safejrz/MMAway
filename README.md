@@ -7,8 +7,9 @@ MMAway is a small **Windows-only** desktop utility that simulates occasional mou
 ## Features
 
 - Start and stop activity from the app window.
-- Make small, randomized mouse movements at variable intervals.
-- Occasionally perform a larger mouse pattern and a simulated left click near the MMAway window.
+- Make randomized mouse movements inside MMAway's text box at variable intervals, including a zero-distance mouse input to signal activity to Windows.
+- Occasionally perform a larger mouse pattern and a simulated left click in the text box only when MMAway is foreground and the target is unobstructed.
+- Pause generated activity while the window is minimized or the text box has no usable bounds; restore the window to resume.
 - Type random characters into MMAway’s own text box; it does not type messages into Teams.
 - Ask Windows to keep the system and display awake while activity is running, and restore the normal sleep behavior when stopped.
 - Change the app icon to indicate whether activity is running.

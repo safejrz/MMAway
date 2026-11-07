@@ -1,5 +1,6 @@
 using MMA.Input;
 using MMA.Properties;
+using System.Runtime.InteropServices;
 
 namespace MMA
 {
@@ -8,26 +9,56 @@ namespace MMA
         private readonly IInputInjector input = new WindowsInput();
         private readonly IKeepAwake keepAwake = new WindowsKeepAwake();
         private readonly ActivityEngine engine;
-        private sealed record WindowPosition(Point Value);
-        private WindowPosition windowPosition = new(Point.Empty);
+        private sealed record BoundsSnapshot(Rectangle? Bounds, IntPtr Window, IntPtr Output, bool Active);
+        private BoundsSnapshot boundsSnapshot = new(null, IntPtr.Zero, IntPtr.Zero, false);
         private bool running;
         private int session;
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr GetForegroundWindow();
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr WindowFromPoint(Point point);
 
         public MainWindow()
         {
             var bounds = (Screen.PrimaryScreen ?? Screen.AllScreens.FirstOrDefault())?.Bounds
                 ?? new Rectangle(0, 0, 512, 384);
-            var home = new Point(bounds.X + bounds.Width / 4, bounds.Y + bounds.Height / 5 * 4);
             InitializeComponent();
             Location = new Point(bounds.X + bounds.Width / 10, bounds.Y + bounds.Height / 5);
-            UpdateWindowPosition();
-            Move += (_, _) => UpdateWindowPosition();
-            engine = new ActivityEngine(input, home, () => Volatile.Read(ref windowPosition).Value,
-                text => PostToSession(() => textBox.AppendText(text)),
+            Move += (_, _) => UpdateActivityBounds();
+            Resize += (_, _) => UpdateActivityBounds();
+            VisibleChanged += (_, _) => UpdateActivityBounds();
+            Shown += (_, _) => UpdateActivityBounds();
+            Activated += (_, _) => UpdateActivityBounds();
+            Deactivate += (_, _) => UpdateActivityBounds();
+            DpiChanged += (_, _) => UpdateActivityBounds();
+            textBox.SizeChanged += (_, _) => UpdateActivityBounds();
+            textBox.LocationChanged += (_, _) => UpdateActivityBounds();
+            engine = new ActivityEngine(input, () => Volatile.Read(ref boundsSnapshot).Bounds,
+                CanClick, text => PostToSession(() => textBox.AppendText(text)),
                 () => PostToSession(textBox.Clear), ReportEngineError);
         }
 
-        private void UpdateWindowPosition() => Volatile.Write(ref windowPosition, new WindowPosition(Location));
+        private void UpdateActivityBounds()
+        {
+            if (!IsHandleCreated || !Visible || WindowState == FormWindowState.Minimized ||
+                !textBox.IsHandleCreated || !textBox.Visible || textBox.ClientSize.Width <= 0 || textBox.ClientSize.Height <= 0)
+            {
+                Volatile.Write(ref boundsSnapshot, new BoundsSnapshot(null, IntPtr.Zero, IntPtr.Zero, false));
+                return;
+            }
+
+            var bounds = textBox.RectangleToScreen(textBox.ClientRectangle);
+            Volatile.Write(ref boundsSnapshot, new BoundsSnapshot(bounds, Handle, textBox.Handle, ContainsFocus));
+        }
+
+        private bool CanClick(Point target, Rectangle area)
+        {
+            var snapshot = Volatile.Read(ref boundsSnapshot);
+            return snapshot.Active && snapshot.Bounds is { } bounds && bounds.Contains(area) &&
+                GetForegroundWindow() == snapshot.Window && WindowFromPoint(target) == snapshot.Output;
+        }
 
         private void PostToSession(Action action)
         {

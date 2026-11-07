@@ -5,8 +5,27 @@ namespace MMA.Input;
 
 internal sealed class WindowsInput : IInputInjector
 {
+    private const uint MouseMove = 0x0001;
     private const uint MouseLeftDown = 0x0002;
     private const uint MouseLeftUp = 0x0004;
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MouseInput
+    {
+        public int X;
+        public int Y;
+        public uint MouseData;
+        public uint Flags;
+        public uint Time;
+        public UIntPtr ExtraInfo;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct InputEvent
+    {
+        public uint Type;
+        public MouseInput Mouse;
+    }
 
     [StructLayout(LayoutKind.Sequential)]
     private struct NativePoint
@@ -24,6 +43,9 @@ internal sealed class WindowsInput : IInputInjector
     [DllImport("user32.dll")]
     private static extern void mouse_event(uint flags, uint dx, uint dy, uint data, UIntPtr extraInfo);
 
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern uint SendInput(uint count, InputEvent[] inputs, int size);
+
     public Point GetCursorPosition()
     {
         if (!GetCursorPos(out var point))
@@ -35,6 +57,14 @@ internal sealed class WindowsInput : IInputInjector
     {
         if (!SetCursorPos(position.X, position.Y))
             throw new Win32Exception(Marshal.GetLastWin32Error(), "Could not move the cursor.");
+    }
+
+    public void SignalActivity()
+    {
+        // SetCursorPos does not reset Windows' last-input time; a zero-distance input does.
+        var events = new[] { new InputEvent { Mouse = new MouseInput { Flags = MouseMove } } };
+        if (SendInput(1, events, Marshal.SizeOf<InputEvent>()) != 1)
+            throw new Win32Exception(Marshal.GetLastWin32Error(), "Could not signal mouse activity.");
     }
 
     public void LeftClick() => mouse_event(MouseLeftDown | MouseLeftUp, 0, 0, 0, UIntPtr.Zero);
