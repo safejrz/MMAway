@@ -2,6 +2,7 @@ namespace MMA.Input;
 
 public interface IInputInjector : IDisposable
 {
+    uint? UserInputVersion => null;
     Point GetCursorPosition();
     void SetCursorPosition(Point position);
     void SignalActivity();

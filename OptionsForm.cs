@@ -6,6 +6,8 @@ internal sealed class OptionsForm : Form
     private readonly NumericUpDown intervalMin = Number("intervalMin", 1, 300);
     private readonly NumericUpDown intervalMax = Number("intervalMax", 1, 300);
     private readonly NumericUpDown autoStop = Number("autoStop", 0, 1440);
+    private readonly NumericUpDown userIdle = Number("userIdle", 1, 3600);
+    private readonly CheckBox showSessionInfo = new() { Name = "showSessionInfo", Text = "Show session time and activity count", AutoSize = true };
     private readonly TextBox hotkey = new() { Name = "hotkey", Width = 160, BackColor = Color.FromArgb(37, 37, 38), ForeColor = Color.White };
     private readonly NumericUpDown typingMin = Number("typingMin", 1, 300);
     private readonly NumericUpDown typingMax = Number("typingMax", 1, 300);
@@ -48,8 +50,10 @@ internal sealed class OptionsForm : Form
         general.Content.Controls.Add(Heading("Auto-stop minutes (not active yet)"));
         general.Content.Controls.Add(autoStop);
         general.Content.Controls.Add(Note("These values are saved for a later feature. Neither hotkeys nor auto-stop work in this version."));
-        general.Content.Controls.Add(Note("Session time and activity count will be available with the safety feature."));
+        general.Content.Controls.Add(showSessionInfo);
 
+        mouse.Content.Controls.Add(Heading("Resume after mouse is idle (seconds)"));
+        mouse.Content.Controls.Add(userIdle);
         mouse.Content.Controls.Add(Heading("Movement patterns"));
         foreach (var pattern in Enum.GetValues<MovementPattern>()) patterns.Items.Add(pattern);
         mouse.Content.Controls.Add(patterns);
@@ -61,8 +65,7 @@ internal sealed class OptionsForm : Form
         speedRow.Controls.Add(speed);
         speedRow.Controls.Add(speedValue);
         mouse.Content.Controls.Add(speedRow);
-        mouse.Content.Controls.Add(Note("Scales the 2–5 second pattern duration: 0.5x slower, 1.5x default, 3.0x faster."));
-        mouse.Content.Controls.Add(Note("Pause on user movement and the resume delay are planned for a later feature."));
+        mouse.Content.Controls.Add(Note("Scales the 2–5 second movement duration: 0.5x slower, 1.5x default, 3.0x faster."));
         speed.ValueChanged += (_, _) => speedValue.Text = $"{speed.Value / 10.0:0.0}x";
 
         keyboard.Content.Controls.Add(typingEnabled);
@@ -124,6 +127,8 @@ internal sealed class OptionsForm : Form
         intervalMin.Value = settings.IntervalMinimumSeconds;
         intervalMax.Value = settings.IntervalMaximumSeconds;
         autoStop.Value = settings.AutoStopMinutes;
+        userIdle.Value = settings.UserIdleSeconds;
+        showSessionInfo.Checked = settings.ShowSessionInfo;
         hotkey.Text = settings.GlobalHotkey;
         typingMin.Value = settings.TypingIntervalMinimumSeconds;
         typingMax.Value = settings.TypingIntervalMaximumSeconds;
@@ -148,6 +153,8 @@ internal sealed class OptionsForm : Form
             IntervalMinimumSeconds = (int)intervalMin.Value,
             IntervalMaximumSeconds = (int)intervalMax.Value,
             AutoStopMinutes = (int)autoStop.Value,
+            UserIdleSeconds = (int)userIdle.Value,
+            ShowSessionInfo = showSessionInfo.Checked,
             GlobalHotkey = hotkey.Text.Trim(),
             TypingIntervalMinimumSeconds = (int)typingMin.Value,
             TypingIntervalMaximumSeconds = (int)typingMax.Value,

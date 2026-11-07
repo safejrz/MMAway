@@ -18,6 +18,7 @@ namespace MMA
         private BoundsSnapshot boundsSnapshot = new(null, IntPtr.Zero, IntPtr.Zero, false);
         private bool running;
         private int session;
+        private int statsTicks;
 
         [DllImport("user32.dll")]
         private static extern IntPtr GetForegroundWindow();
@@ -85,6 +86,7 @@ namespace MMA
                 await settingsStore.SaveAsync(updated);
                 Volatile.Write(ref settings, updated);
                 settingsReady = true;
+                sessionLabel.Visible = updated.ShowSessionInfo && sessionLabel.Text.Length > 0;
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
             {
@@ -125,6 +127,20 @@ namespace MMA
             leftSpinner.Advance();
             rightSpinner.Advance();
             activityProgress.Advance();
+            if (++statsTicks >= 50)
+            {
+                statsTicks = 0;
+                UpdateRunningStats();
+            }
+        }
+
+        private void UpdateRunningStats()
+        {
+            var elapsed = engine.SessionDuration;
+            activityProgress.Text = settings.ShowSessionInfo
+                ? $"Running · {elapsed:hh\\:mm\\:ss} · {engine.ActivityCount} cycles"
+                : "Running";
+            activityProgress.Invalidate();
         }
 
         private void SetRunningVisuals(bool isRunning)
@@ -132,6 +148,9 @@ namespace MMA
             runningIndicator.Visible = isRunning;
             if (isRunning)
             {
+                sessionLabel.Visible = false;
+                statsTicks = 0;
+                UpdateRunningStats();
                 spinnerTimer.Start();
             }
             else
@@ -246,6 +265,9 @@ namespace MMA
                 try { keepAwake.Disable(); }
                 finally
                 {
+                    var elapsed = engine.SessionDuration;
+                    sessionLabel.Text = $"Last session: {elapsed:hh\\:mm\\:ss} · {engine.ActivityCount} cycles";
+                    sessionLabel.Visible = settings.ShowSessionInfo;
                     Icon = Resources.StopIcon;
                     buttonOk.Text = Resources.ButtonStartLabel;
                     optionsButton.Enabled = true;

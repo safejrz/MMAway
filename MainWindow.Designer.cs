@@ -39,6 +39,7 @@ namespace MMA
             leftSpinner = new SpinnerControl();
             rightSpinner = new SpinnerControl();
             activityProgress = new RunningProgressControl();
+            sessionLabel = new Label();
             spinnerTimer = new System.Windows.Forms.Timer(components);
             titleBar = new Panel();
             optionsButton = new Button();
@@ -120,6 +121,12 @@ namespace MMA
             activityProgress.Name = "activityProgress";
             activityProgress.Size = new Size(270, 24);
             activityProgress.Text = "Running";
+            // sessionLabel
+            sessionLabel.Location = new Point(12, 388);
+            sessionLabel.Name = "sessionLabel";
+            sessionLabel.Size = new Size(326, 24);
+            sessionLabel.TextAlign = ContentAlignment.MiddleCenter;
+            sessionLabel.Visible = false;
             // spinnerTimer
             spinnerTimer.Interval = 20;
             spinnerTimer.Tick += spinnerTimer_Tick;
@@ -198,6 +205,7 @@ namespace MMA
             Controls.Add(titleBar);
             Controls.Add(panel);
             Controls.Add(runningIndicator);
+            Controls.Add(sessionLabel);
             Controls.Add(buttonOk);
             FormBorderStyle = FormBorderStyle.None;
             ForeColor = Color.FromArgb(204, 204, 204);
@@ -225,6 +233,7 @@ namespace MMA
         private SpinnerControl leftSpinner;
         private SpinnerControl rightSpinner;
         private RunningProgressControl activityProgress;
+        private Label sessionLabel;
         private System.Windows.Forms.Timer spinnerTimer;
         private Panel titleBar;
         private Button optionsButton;

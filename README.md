@@ -13,11 +13,15 @@ MMAway is a small **Windows-only** desktop utility that simulates occasional mou
 - Configure activity intervals, pattern selection, movement speed, typing bursts, and spaces using Options. Settings are saved in `%APPDATA%\MMAway\settings.json`. Options are available while activity is stopped.
 - Occasionally perform a simulated left click in the text box only when MMAway is foreground and the target is unobstructed.
 - Pause generated activity while the window is minimized or the text box has no usable bounds; restore the window to resume.
+- Pause automated activity after real mouse movement or clicks, resuming after the configured idle delay (default 10 seconds). Injected events and recent cursor-warp echoes are filtered.
+- Use eased Bézier motion for random moves and optionally show session time and activity counts.
 - Type random characters into MMAway’s own text box; every three or four typing cycles, select a short portion for the next text to replace. It does not type messages into Teams.
 - Ask Windows to keep the system and display awake while activity is running, and restore the normal sleep behavior when stopped.
 - Change the app icon and show an animated running indicator while activity is running.
 
-Long activity intervals can allow Teams to become Away; typing and movement can add time between activity signals. Global hotkey and auto-stop values can be saved but are not active yet. User-idle pausing and session statistics are also not yet implemented in this Windows version.
+Long activity intervals or repeated mouse interaction can delay synthetic activity and allow Teams to become Away; typing and movement can also add time between activity signals. Global hotkey and auto-stop values can be saved but are not active yet.
+
+To observe Windows idle time during a field test, run `powershell -File .\scripts\windows-idle-probe.ps1` while MMAway is running. The probe writes a CSV and refuses to overwrite an existing file; it measures Windows idle time, not Teams presence.
 
 ## Platform support
 

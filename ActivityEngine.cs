@@ -18,8 +18,12 @@ public sealed class ActivityEngine
     private const int MinMoveMilliseconds = 2000;
     private const int MaxMoveMilliseconds = 5000;
     private readonly Stopwatch paceClock = new();
+    private readonly Stopwatch sessionClock = new();
     private double paceIntervalMilliseconds;
     private long paceCount;
+    private Point? lastInjectedPosition;
+    private uint? lastUserInputVersion;
+    private int completedActivities;
     private MovementPattern? lastPattern;
     private int typingCyclesSinceSelection;
     private int nextSelectionAfter = 3;
@@ -43,6 +47,8 @@ public sealed class ActivityEngine
     }
 
     public bool IsRunning => loop is { IsCompleted: false };
+    public TimeSpan SessionDuration => sessionClock.Elapsed;
+    public int ActivityCount => Volatile.Read(ref completedActivities);
 
     public void Start()
     {
@@ -51,6 +57,8 @@ public sealed class ActivityEngine
         getSettings().Validate();
         pass = 0;
         charactersUntilNextSpace = 0;
+        Volatile.Write(ref completedActivities, 0);
+        sessionClock.Restart();
         cancellation = new CancellationTokenSource();
         var token = cancellation.Token;
         loop = Task.Run(() => RunAsync(token));
@@ -76,9 +84,13 @@ public sealed class ActivityEngine
     {
         try
         {
+            lastUserInputVersion = input.UserInputVersion;
+            lastInjectedPosition = null;
             var area = WaitForArea(token);
+            WaitForUserMovement(0, token);
             MoveTo(Center(area), token);
             RunPattern(token);
+            Interlocked.Increment(ref completedActivities);
             var clock = Stopwatch.StartNew();
             var nextActivity = clock.ElapsedMilliseconds + random.Next(10000, 15000);
             var nextTyping = clock.ElapsedMilliseconds + NextTypingInterval();
@@ -90,6 +102,7 @@ public sealed class ActivityEngine
                 var remaining = nextDue - clock.ElapsedMilliseconds;
                 if (remaining > 0) await Task.Delay(TimeSpan.FromMilliseconds(remaining), token).ConfigureAwait(false);
                 token.ThrowIfCancellationRequested();
+                WaitForUserMovement(0, token);
                 if (typingDue)
                 {
                     WriteRandomText(token);
@@ -98,6 +111,7 @@ public sealed class ActivityEngine
                 else
                 {
                     Step(token);
+                    Interlocked.Increment(ref completedActivities);
                     var current = getSettings();
                     nextActivity = clock.ElapsedMilliseconds + random.Next(current.IntervalMinimumSeconds, current.IntervalMaximumSeconds + 1) * 1000;
                 }
@@ -107,6 +121,10 @@ public sealed class ActivityEngine
         catch (Exception ex)
         {
             reportError(ex);
+        }
+        finally
+        {
+            sessionClock.Stop();
         }
     }
 
@@ -154,6 +172,11 @@ public sealed class ActivityEngine
             token.ThrowIfCancellationRequested();
             if (TryGetArea(out var area))
             {
+                if (waited && HasUserInput())
+                {
+                    WaitForUserIdle(token);
+                    continue;
+                }
                 if (waited && paceClock.IsRunning)
                 {
                     paceClock.Restart();
@@ -171,16 +194,56 @@ public sealed class ActivityEngine
 
     private void MoveTo(Point target, CancellationToken token)
     {
+        WaitForUserMovement(0, token);
         var area = WaitForArea(token);
-        input.SetCursorPosition(new Point(Math.Clamp(target.X, area.Left, area.Right - 1),
-            Math.Clamp(target.Y, area.Top, area.Bottom - 1)));
+        lastInjectedPosition = new Point(Math.Clamp(target.X, area.Left, area.Right - 1),
+            Math.Clamp(target.Y, area.Top, area.Bottom - 1));
+        input.SetCursorPosition(lastInjectedPosition.Value);
     }
 
-    private void Move(int dx, int dy, CancellationToken token)
+    private bool HasUserInput() => input.UserInputVersion is { } version
+        ? version != lastUserInputVersion
+        : lastInjectedPosition is { } expected && input.GetCursorPosition() != expected;
+
+    private void WaitForUserIdle(CancellationToken token)
     {
-        WaitForArea(token);
-        var position = input.GetCursorPosition();
-        MoveTo(new Point(position.X + dx, position.Y + dy), token);
+        var threshold = TimeSpan.FromSeconds(getSettings().UserIdleSeconds);
+        var version = input.UserInputVersion;
+        var position = version.HasValue ? default : input.GetCursorPosition();
+        var clock = Stopwatch.StartNew();
+        while (clock.Elapsed < threshold)
+        {
+            Pause(100, token);
+            var currentVersion = input.UserInputVersion;
+            var currentPosition = currentVersion.HasValue ? default : input.GetCursorPosition();
+            if (currentVersion == version && currentPosition == position) continue;
+            version = currentVersion;
+            position = currentPosition;
+            clock.Restart();
+        }
+        lastUserInputVersion = version;
+        lastInjectedPosition = input.GetCursorPosition();
+    }
+
+    private void WaitForUserMovement(int milliseconds, CancellationToken token)
+    {
+        var clock = Stopwatch.StartNew();
+        while (true)
+        {
+            token.ThrowIfCancellationRequested();
+            if (HasUserInput())
+            {
+                WaitForUserIdle(token);
+                if (paceClock.IsRunning)
+                {
+                    paceClock.Restart();
+                    paceCount = 0;
+                }
+            }
+            var remaining = milliseconds - clock.ElapsedMilliseconds;
+            if (remaining <= 0) return;
+            Pause((int)Math.Min(remaining, 100), token);
+        }
     }
 
     private static void Pause(int milliseconds, CancellationToken token)
@@ -213,7 +276,7 @@ public sealed class ActivityEngine
                 appendText(((char)random.Next(48, 122)).ToString());
                 if (settings.TypingSpacesEnabled) charactersUntilNextSpace--;
             }
-            Pause(random.Next(40, 601), token);
+            WaitForUserMovement(random.Next(40, 601), token);
         }
         typingCyclesSinceSelection++;
         if (typingCyclesSinceSelection >= nextSelectionAfter)
@@ -232,16 +295,19 @@ public sealed class ActivityEngine
         lastPattern = pattern;
         MovePattern(pattern, token);
         var area = WaitForArea(token);
+        WaitForUserMovement(0, token);
         input.SignalActivity();
         var target = Center(area);
         var original = input.GetCursorPosition();
-        if (!canClick(target, area)) return;
+        if (HasUserInput() || !canClick(target, area)) return;
+        var inputVersion = input.UserInputVersion;
+        if (inputVersion is { } version ? version != lastUserInputVersion : lastInjectedPosition != original) return;
         MoveTo(target, token);
         token.ThrowIfCancellationRequested();
-        if (!TryGetArea(out var currentArea) || currentArea != area ||
+        if (input.UserInputVersion != inputVersion || !TryGetArea(out var currentArea) || currentArea != area ||
             input.GetCursorPosition() != target || !canClick(target, area)) return;
         input.LeftClick();
-        if (!token.IsCancellationRequested && TryGetArea(out currentArea) && currentArea == area &&
+        if (!token.IsCancellationRequested && input.UserInputVersion == inputVersion && TryGetArea(out currentArea) && currentArea == area &&
             input.GetCursorPosition() == target && canClick(target, area))
             MoveTo(original, token);
     }
@@ -257,6 +323,7 @@ public sealed class ActivityEngine
             {
                 token.ThrowIfCancellationRequested();
                 WaitForArea(token);
+                WaitForUserMovement(0, token);
                 MoveTo(point, token);
                 Pace(token);
             }
@@ -322,32 +389,47 @@ public sealed class ActivityEngine
             var remaining = paceCount * paceIntervalMilliseconds - paceClock.Elapsed.TotalMilliseconds;
             if (remaining < 1) return;
             Pause((int)Math.Clamp(remaining, 1, 100), token);
+            if (HasUserInput())
+            {
+                WaitForUserIdle(token);
+                paceClock.Restart();
+                paceCount = 0;
+            }
         }
     }
 
     private void RandomMove(CancellationToken token)
     {
-        var moves = random.Next(20, 55);
-        var variance = random.Next(1, 3);
-        var horizontal = random.Next(1, 6) >= 4;
-        for (var i = 0; i < moves; i++)
+        var area = WaitForArea(token);
+        var start = input.GetCursorPosition();
+        Point RandomPoint() => new(random.Next(area.Left, area.Right), random.Next(area.Top, area.Bottom));
+        var end = RandomPoint();
+        var control1 = RandomPoint();
+        var control2 = RandomPoint();
+        var moves = random.Next(36, 61);
+        BeginPaced(moves);
+        try
         {
-            token.ThrowIfCancellationRequested();
-            if (horizontal)
+            for (var i = 1; i <= moves; i++)
             {
-                Move(random.Next(-5, 5), -variance, token);
-                i++;
-                Move(random.Next(-5, 5), variance, token);
+                WaitForArea(token);
+                WaitForUserMovement(0, token);
+                var t = (double)i / moves;
+                t = t * t * (3 - 2 * t);
+                var u = 1 - t;
+                MoveTo(new Point(
+                    (int)Math.Round(u * u * u * start.X + 3 * u * u * t * control1.X + 3 * u * t * t * control2.X + t * t * t * end.X),
+                    (int)Math.Round(u * u * u * start.Y + 3 * u * u * t * control1.Y + 3 * u * t * t * control2.Y + t * t * t * end.Y)), token);
+                Pace(token);
             }
-            else
-            {
-                Move(variance, random.Next(-5, 5), token);
-                i++;
-                Move(variance, random.Next(-5, 5), token);
-            }
-            if (i % 3 == 0) Pause(3, token);
+        }
+        finally
+        {
+            paceClock.Reset();
+            paceIntervalMilliseconds = 0;
         }
         WaitForArea(token);
+        WaitForUserMovement(0, token);
         input.SignalActivity();
     }
 }
