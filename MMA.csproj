@@ -6,6 +6,7 @@
 		<Nullable>enable</Nullable>
 		<UseWindowsForms>true</UseWindowsForms>
 		<ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+		<ApplicationIcon>Resources\MainIcon.ico</ApplicationIcon>
 		<ImplicitUsings>enable</ImplicitUsings>
 		<Deterministic>false</Deterministic>
 		<AssemblyVersion>1.2.0.*</AssemblyVersion>
