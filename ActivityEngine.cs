@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Diagnostics;
 using MMA.Input;
 
@@ -102,18 +103,27 @@ public sealed class ActivityEngine
                 var remaining = nextDue - clock.ElapsedMilliseconds;
                 if (remaining > 0) await Task.Delay(TimeSpan.FromMilliseconds(remaining), token).ConfigureAwait(false);
                 token.ThrowIfCancellationRequested();
-                WaitForUserMovement(0, token);
-                if (typingDue)
+                try
                 {
-                    WriteRandomText(token);
-                    nextTyping = clock.ElapsedMilliseconds + NextTypingInterval();
+                    WaitForUserMovement(0, token);
+                    if (typingDue)
+                    {
+                        WriteRandomText(token);
+                        nextTyping = clock.ElapsedMilliseconds + NextTypingInterval();
+                    }
+                    else
+                    {
+                        Step(token);
+                        Interlocked.Increment(ref completedActivities);
+                        var current = getSettings();
+                        nextActivity = clock.ElapsedMilliseconds + random.Next(current.IntervalMinimumSeconds, current.IntervalMaximumSeconds + 1) * 1000;
+                    }
                 }
-                else
+                catch (Win32Exception)
                 {
-                    Step(token);
-                    Interlocked.Increment(ref completedActivities);
-                    var current = getSettings();
-                    nextActivity = clock.ElapsedMilliseconds + random.Next(current.IntervalMinimumSeconds, current.IntervalMaximumSeconds + 1) * 1000;
+                    // Input was busy (e.g. the user was moving the mouse); skip this attempt and retry shortly.
+                    if (typingDue) nextTyping = clock.ElapsedMilliseconds + 1000;
+                    else nextActivity = clock.ElapsedMilliseconds + 1000;
                 }
             }
         }
