@@ -8,6 +8,7 @@ public sealed class HotkeyTests
 {
     [Theory]
     [InlineData("Ctrl+Alt+M", 3u, 0x4Du)]
+    [InlineData("Ctrl+Alt+Shift+M", 7u, 0x4Du)]
     [InlineData("Control+Shift+F12", 6u, 0x7Bu)]
     [InlineData("Meta+Space", 8u, 0x20u)]
     [InlineData("Super+Enter", 8u, 0x0Du)]

@@ -13,6 +13,7 @@ public sealed class ActivitySettingsTests
         Assert.False(settings.ShowSessionInfo);
         Assert.Equal(1.5, settings.Aggressiveness);
         Assert.Equal(10, settings.SelectedPatterns.Count);
+        Assert.Equal("Ctrl+Alt+Shift+M", settings.GlobalHotkey);
     }
 
     [Theory]
@@ -32,6 +33,25 @@ public sealed class ActivitySettingsTests
             var loaded = await store.LoadAsync();
             Assert.Equal(12, loaded.UserIdleSeconds);
             Assert.True(loaded.ShowSessionInfo);
+        }
+        finally { File.Delete(path); }
+    }
+
+    [Theory]
+    [InlineData("Ctrl+Alt+M", "Ctrl+Alt+Shift+M")]
+    [InlineData("Ctrl+F10", "Ctrl+F10")]
+    public async Task LegacySettingsMigrateOnlyFormerDefault(string shortcut, string expected)
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"mmaway-test-{Guid.NewGuid():N}.json");
+        try
+        {
+            await File.WriteAllTextAsync(path, $"{{\"GlobalHotkey\":\"{shortcut}\",\"UserIdleSeconds\":12}}");
+            var store = new SettingsStore(path);
+            var loaded = await store.LoadAsync();
+            Assert.Equal(expected, loaded.GlobalHotkey);
+            Assert.Equal(12, loaded.UserIdleSeconds);
+            await store.SaveAsync(loaded with { GlobalHotkey = "Ctrl+Alt+M" });
+            Assert.Equal("Ctrl+Alt+M", (await store.LoadAsync()).GlobalHotkey);
         }
         finally { File.Delete(path); }
     }

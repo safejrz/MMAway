@@ -6,7 +6,8 @@ MMAway is a small **Windows-only** desktop utility that simulates occasional mou
 
 ## Features
 
-- Start and stop activity from the app window or with a configurable global hotkey (default `Ctrl+Alt+M`), including while another app is focused. Registration failures are reported; the previous hotkey remains active if a replacement fails.
+- Start and stop activity from the app window or with a configurable global hotkey (default `Ctrl+Alt+Shift+M`), including while another app is focused. Registration failures are reported; the previous hotkey remains active if a replacement fails. Existing settings using the former default `Ctrl+Alt+M` are upgraded to the new default; other saved shortcuts are preserved. You can still select the former shortcut in Options.
+- View the running app's assembly version on the About tab in Options.
 - Optionally stop each session automatically after a configured number of minutes (0 disables auto-stop).
 - Make randomized mouse movements inside MMAway's text box at variable intervals, including a zero-distance mouse input to signal activity to Windows.
 - Open near the right side of the primary work area, matching the Avalonia version.
@@ -35,11 +36,14 @@ To observe Windows idle time during a field test, run `powershell -File .\script
 
 Visit [MMAway Releases](https://github.com/safejrz/MMAway/releases) for versioned source archives. Releases do not currently include an installer or prebuilt executable.
 
+The app version is set in `MMA.csproj` and should be updated alongside each release tag; Git tags do not change it automatically. Builds between releases retain the most recent version until it is updated.
+
 - **v1.2.0** — Windows-only baseline, field-tested by the project owner. Includes the original WinForms app and basic activity simulation.
 - **v1.3.0 — Movement contained** — Extracted activity engine and Windows input services; cursor movement and clicks are contained within the app's output area; adds ten randomized movement patterns, variable pacing, text selection/replacement, and right-side startup placement.
 - **v1.4.0 — Movement contained and Enhanced UI** — Adds the fixed 350×500 dark-themed window with a custom draggable title bar and minimize/close controls; removes the output area's scrollbar.
 - **v1.5.0 — Configurable and safer activity** — Adds animated running indicators, persistent activity settings, user-aware mouse pause and guarded clicks, optional session statistics, a configurable global hotkey, and auto-stop.
 - **v1.5.1 — Application icon fix** — Embeds the MMAway icon in the Windows executable instead of the default application icon.
+- **v1.6.0 — Hotkey and version information** — Changes the default start/stop hotkey to Ctrl+Alt+Shift+M, upgrades settings using the former default, and adds version information to Options.
 
 ## Download and run
 

@@ -19,7 +19,8 @@ public sealed record ActivitySettings
     public int UserIdleSeconds { get; init; } = 10;
     public bool ShowSessionInfo { get; init; }
     public int AutoStopMinutes { get; init; }
-    public string GlobalHotkey { get; init; } = "Ctrl+Alt+M";
+    public string GlobalHotkey { get; init; } = "Ctrl+Alt+Shift+M";
+    public int SettingsVersion { get; init; }
 
     public void Validate()
     {

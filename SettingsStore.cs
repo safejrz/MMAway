@@ -4,6 +4,7 @@ namespace MMA;
 
 public sealed class SettingsStore
 {
+    private const int CurrentSettingsVersion = 1;
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
     private readonly string settingsPath;
 
@@ -33,13 +34,16 @@ public sealed class SettingsStore
             var settings = await JsonSerializer.DeserializeAsync<ActivitySettings>(stream, JsonOptions, cancellationToken)
                 ?? throw new InvalidDataException($"Settings file '{settingsPath}' is empty or invalid.");
             settings.Validate();
-            return settings;
+            if (settings.SettingsVersion == 0 && settings.GlobalHotkey == "Ctrl+Alt+M")
+                settings = settings with { GlobalHotkey = new ActivitySettings().GlobalHotkey };
+            return settings with { SettingsVersion = Math.Max(settings.SettingsVersion, CurrentSettingsVersion) };
         }
     }
 
     public async Task SaveAsync(ActivitySettings settings, CancellationToken cancellationToken = default)
     {
         settings.Validate();
+        settings = settings with { SettingsVersion = Math.Max(settings.SettingsVersion, CurrentSettingsVersion) };
         var directory = Path.GetDirectoryName(settingsPath)
             ?? throw new InvalidOperationException("Settings path must include a directory.");
         Directory.CreateDirectory(directory);

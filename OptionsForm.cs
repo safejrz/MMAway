@@ -41,11 +41,14 @@ internal sealed class OptionsForm : Form
         var general = Page("General");
         var mouse = Page("Mouse");
         var keyboard = Page("Keyboard");
-        tabs.TabPages.AddRange([general.Page, mouse.Page, keyboard.Page]);
+        var about = Page("About");
+        tabs.TabPages.AddRange([general.Page, mouse.Page, keyboard.Page, about.Page]);
+        about.Content.Controls.Add(Heading("MMAway version"));
+        about.Content.Controls.Add(new Label { Name = "version", AutoSize = true, Text = typeof(MainWindow).Assembly.GetName().Version!.ToString(3) });
         general.Content.Controls.Add(Heading("Activity interval (seconds)"));
         general.Content.Controls.Add(RangeRow(intervalMin, intervalMax));
         general.Content.Controls.Add(Note("Long intervals can allow Teams to become Away. Delays may also include time spent typing or moving."));
-        general.Content.Controls.Add(Heading("Global hotkey"));
+        general.Content.Controls.Add(Heading("Global hotkey (Run: start/stop)"));
         general.Content.Controls.Add(hotkey);
         general.Content.Controls.Add(Note("Use Ctrl, Alt, Shift, or Win with A-Z, 0-9, F1-F12, Space, Enter, Esc, or Tab."));
         general.Content.Controls.Add(Heading("Auto-stop minutes (0 disables)"));
