@@ -6,6 +6,7 @@ MMAway is a small **Windows-only** desktop utility that simulates occasional mou
 
 ## Features
 
+- Allow only one running instance; launching MMAway again while it is already open exits without creating another window.
 - Use the configurable global hotkey (default `Ctrl+Alt+Shift+M`) to restore and show the running app, even when another app is focused. It does not launch a closed app or keep the window always on top. Start and stop activity with the button or `Ctrl+S` while the main window is focused. Registration failures are reported; the previous hotkey remains active if a replacement fails. Previously saved shortcuts now show the window rather than toggle activity. A previously saved global `Ctrl+S` is changed to the default and reported; choose another global shortcut in Options if preferred.
 - View the running app's assembly version on the About tab in Options.
 - Optionally stop each session automatically after a configured number of minutes (0 disables auto-stop).
@@ -46,6 +47,7 @@ The app version is set in `MMA.csproj` and should be updated alongside each rele
 - **v1.5.1 — Application icon fix** — Embeds the MMAway icon in the Windows executable instead of the default application icon.
 - **v1.6.0 — Hotkey and version information** — Changes the default start/stop hotkey to Ctrl+Alt+Shift+M, upgrades settings using the former default, and adds version information to Options.
 - **v1.7.0 — Window shortcut and refreshed Options** — Uses the global hotkey to show the running window and Ctrl+S within the main window to start or stop activity; refreshes Options, limits generated text, and improves handling of cursor-move failures.
+- **v1.7.1 — Single application instance** — Prevents multiple MMAway windows from opening by exiting additional launches while an instance is already running.
 
 ## Download and run
 
