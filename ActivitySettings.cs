@@ -39,7 +39,8 @@ public sealed record ActivitySettings
             throw new ArgumentOutOfRangeException(nameof(UserIdleSeconds), "Resume delay must be between 1 and 3600 seconds.");
         if (AutoStopMinutes is < 0 or > 1440)
             throw new ArgumentOutOfRangeException(nameof(AutoStopMinutes), "Auto-stop must be between 0 and 1440 minutes.");
-        _ = HotkeyGesture.Parse(GlobalHotkey);
+        if (HotkeyGesture.Parse(GlobalHotkey) == HotkeyGesture.Parse("Ctrl+S"))
+            throw new ArgumentException("Ctrl+S is reserved for start/stop in the MMAway window. Choose a different global hotkey.");
     }
 
     private static void ValidateRange(int minimum, int maximum, int lower, int upper, string name)

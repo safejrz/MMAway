@@ -8,6 +8,8 @@ public sealed class SettingsStore
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
     private readonly string settingsPath;
 
+    public bool ReplacedReservedGlobalHotkey { get; private set; }
+
     public SettingsStore(string? settingsPath = null)
     {
         this.settingsPath = settingsPath ?? Path.Combine(
@@ -16,6 +18,7 @@ public sealed class SettingsStore
 
     public async Task<ActivitySettings> LoadAsync(CancellationToken cancellationToken = default)
     {
+        ReplacedReservedGlobalHotkey = false;
         FileStream stream;
         try
         {
@@ -29,15 +32,23 @@ public sealed class SettingsStore
         {
             return new ActivitySettings();
         }
+        ActivitySettings settings;
         await using (stream)
         {
-            var settings = await JsonSerializer.DeserializeAsync<ActivitySettings>(stream, JsonOptions, cancellationToken)
+            settings = await JsonSerializer.DeserializeAsync<ActivitySettings>(stream, JsonOptions, cancellationToken)
                 ?? throw new InvalidDataException($"Settings file '{settingsPath}' is empty or invalid.");
-            settings.Validate();
-            if (settings.SettingsVersion == 0 && settings.GlobalHotkey == "Ctrl+Alt+M")
-                settings = settings with { GlobalHotkey = new ActivitySettings().GlobalHotkey };
-            return settings with { SettingsVersion = Math.Max(settings.SettingsVersion, CurrentSettingsVersion) };
         }
+        var reservedHotkey = MMA.Input.HotkeyGesture.Parse(settings.GlobalHotkey) == MMA.Input.HotkeyGesture.Parse("Ctrl+S");
+        if (reservedHotkey || (settings.SettingsVersion == 0 && settings.GlobalHotkey == "Ctrl+Alt+M"))
+            settings = settings with { GlobalHotkey = new ActivitySettings().GlobalHotkey };
+        settings.Validate();
+        settings = settings with { SettingsVersion = Math.Max(settings.SettingsVersion, CurrentSettingsVersion) };
+        if (reservedHotkey)
+        {
+            await SaveAsync(settings, cancellationToken);
+            ReplacedReservedGlobalHotkey = true;
+        }
+        return settings;
     }
 
     public async Task SaveAsync(ActivitySettings settings, CancellationToken cancellationToken = default)

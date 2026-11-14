@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.ComponentModel;
 using MMA;
 using MMA.Input;
 
@@ -175,6 +176,69 @@ public sealed class ActivityEngineTests
         Assert.False(engine.IsRunning);
     }
 
+    [Theory]
+    [InlineData(5)]
+    [InlineData(170)]
+    public async Task TransientCursorFailureAtStartupIsRetried(int errorCode)
+    {
+        using var input = new FakeInput { MoveFailuresRemaining = 2, MoveErrorCode = errorCode };
+        var engine = Create(input, () => false, out var errors);
+        engine.Start();
+        try
+        {
+            await WaitUntil(() => input.Signals > 0, TimeSpan.FromSeconds(10));
+            Assert.Empty(errors);
+            Assert.True(input.MoveAttempts >= 3);
+        }
+        finally { await engine.StopAsync(); }
+    }
+
+    [Theory]
+    [InlineData(5, 4)]
+    [InlineData(170, 4)]
+    [InlineData(87, 1)]
+    public async Task PersistentCursorFailureIsReported(int errorCode, int expectedAttempts)
+    {
+        using var input = new FakeInput { MoveFailuresRemaining = 10, MoveErrorCode = errorCode };
+        var engine = Create(input, () => false, out var errors);
+        engine.Start();
+        try
+        {
+            await WaitUntil(() => !errors.IsEmpty, TimeSpan.FromSeconds(5));
+            Assert.Equal(errorCode, Assert.IsType<Win32Exception>(Assert.Single(errors)).NativeErrorCode);
+            Assert.Equal(expectedAttempts, input.MoveAttempts);
+        }
+        finally { await engine.StopAsync(); }
+    }
+
+    [Fact]
+    public async Task CursorFailureDuringLaterActivityIsReported()
+    {
+        using var input = new FakeInput { MoveErrorCode = 5 };
+        var engine = Create(input, () => false, out var errors);
+        engine.Start();
+        try
+        {
+            await WaitUntil(() => engine.ActivityCount > 0, TimeSpan.FromSeconds(8));
+            input.MoveFailuresRemaining = 10;
+            await WaitUntil(() => !errors.IsEmpty, TimeSpan.FromSeconds(23));
+            Assert.Equal(5, Assert.IsType<Win32Exception>(Assert.Single(errors)).NativeErrorCode);
+        }
+        finally { await engine.StopAsync(); }
+    }
+
+    [Fact]
+    public async Task StopInterruptsCursorRetry()
+    {
+        using var input = new FakeInput { MoveFailuresRemaining = 10, MoveErrorCode = 5 };
+        var engine = Create(input, () => false, out var errors);
+        engine.Start();
+        await WaitUntil(() => input.MoveAttempts > 0, TimeSpan.FromSeconds(5));
+        await engine.StopAsync().WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.Empty(errors);
+        Assert.False(engine.IsRunning);
+    }
+
     private static ActivityEngine Create(FakeInput input, Func<bool> canClick, out ConcurrentQueue<Exception> errors)
     {
         var captured = new ConcurrentQueue<Exception>();
@@ -201,9 +265,14 @@ public sealed class ActivityEngineTests
         private int signals;
         private int clicks;
         private int outOfBounds;
+        private int moveAttempts;
+        private int moveFailuresRemaining;
         private Point position = new(150, 150);
         public bool DriftAfterSignal { get; init; }
+        public int MoveFailuresRemaining { get => Volatile.Read(ref moveFailuresRemaining); set => Volatile.Write(ref moveFailuresRemaining, value); }
+        public int MoveErrorCode { get; init; }
         public uint? UserInputVersion => unchecked((uint)Volatile.Read(ref version));
+        public int MoveAttempts => Volatile.Read(ref moveAttempts);
         public int Moves => Volatile.Read(ref moves);
         public int Signals => Volatile.Read(ref signals);
         public int Clicks => Volatile.Read(ref clicks);
@@ -212,6 +281,12 @@ public sealed class ActivityEngineTests
         public Point GetCursorPosition() => position;
         public void SetCursorPosition(Point value)
         {
+            Interlocked.Increment(ref moveAttempts);
+            if (MoveFailuresRemaining > 0)
+            {
+                Interlocked.Decrement(ref moveFailuresRemaining);
+                throw new Win32Exception(MoveErrorCode);
+            }
             position = DriftAfterSignal && Signals > 0 ? new Point(value.X + 1, value.Y) : value;
             if (!new Rectangle(100, 100, 200, 200).Contains(value)) Interlocked.Increment(ref outOfBounds);
             Interlocked.Increment(ref moves);

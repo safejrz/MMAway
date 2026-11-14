@@ -25,6 +25,8 @@ public sealed class HotkeyTests
     [InlineData("Hyper+M")]
     [InlineData("Ctrl+F13")]
     [InlineData("Ctrl+?")]
+    [InlineData("Ctrl+S")]
+    [InlineData("Control+s")]
     public void RejectsInvalidShortcuts(string shortcut) =>
         Assert.Throws<ArgumentException>(() => (new ActivitySettings { GlobalHotkey = shortcut }).Validate());
 

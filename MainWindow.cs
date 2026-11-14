@@ -11,6 +11,7 @@ namespace MMA
         private const int WmNcLButtonDown = 0x00A1;
         private const int WmHotkey = 0x0312;
         private const int HtCaption = 2;
+        private const int MaximumGeneratedTextLength = 100;
         private readonly IInputInjector input = new WindowsInput();
         private readonly IKeepAwake keepAwake = new WindowsKeepAwake();
         private readonly ActivityEngine engine;
@@ -81,6 +82,9 @@ namespace MMA
                 settingsReady = true;
                 buttonOk.Enabled = true;
                 ConfigureGlobalHotkey();
+                if (settingsStore.ReplacedReservedGlobalHotkey)
+                    MessageBox.Show(this, "The global Ctrl+S shortcut was changed to Ctrl+Alt+Shift+M. Ctrl+S now starts or stops activity only in the MMAway window. You can choose another global shortcut in Options.",
+                        "MMAway", MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Text.Json.JsonException or ArgumentException)
             {
@@ -163,10 +167,22 @@ namespace MMA
         {
             if (m.Msg == WmHotkey && globalHotkey?.IsMessage(m.WParam) == true)
             {
-                _ = ToggleActivityAsync();
+                if (WindowState == FormWindowState.Minimized) WindowState = FormWindowState.Normal;
+                Show();
+                Activate();
                 return;
             }
             base.WndProc(ref m);
+        }
+
+        protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+        {
+            if (keyData == (Keys.Control | Keys.S))
+            {
+                _ = ToggleActivityAsync();
+                return true;
+            }
+            return base.ProcessCmdKey(ref msg, keyData);
         }
 
         private void titleBar_MouseDown(object? sender, MouseEventArgs e)
@@ -239,11 +255,14 @@ namespace MMA
             if (length == 0)
             {
                 textBox.AppendText(text);
-                return;
+            }
+            else
+            {
+                textBox.Select(start, length);
+                textBox.SelectedText = text;
             }
 
-            textBox.Select(start, length);
-            textBox.SelectedText = text;
+            if (textBox.TextLength > MaximumGeneratedTextLength) textBox.Clear();
         }
 
         private void SelectRandomText()

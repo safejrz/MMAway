@@ -18,6 +18,10 @@ public sealed class ActivityEngine
     private const int EdgeMargin = 8;
     private const int MinMoveMilliseconds = 2000;
     private const int MaxMoveMilliseconds = 5000;
+    private const int CursorMoveRetryCount = 3;
+    private const int CursorMoveRetryDelayMilliseconds = 500;
+    private const int ErrorAccessDenied = 5;
+    private const int ErrorBusy = 170;
     private readonly Stopwatch paceClock = new();
     private readonly Stopwatch sessionClock = new();
     private double paceIntervalMilliseconds;
@@ -103,27 +107,18 @@ public sealed class ActivityEngine
                 var remaining = nextDue - clock.ElapsedMilliseconds;
                 if (remaining > 0) await Task.Delay(TimeSpan.FromMilliseconds(remaining), token).ConfigureAwait(false);
                 token.ThrowIfCancellationRequested();
-                try
+                WaitForUserMovement(0, token);
+                if (typingDue)
                 {
-                    WaitForUserMovement(0, token);
-                    if (typingDue)
-                    {
-                        WriteRandomText(token);
-                        nextTyping = clock.ElapsedMilliseconds + NextTypingInterval();
-                    }
-                    else
-                    {
-                        Step(token);
-                        Interlocked.Increment(ref completedActivities);
-                        var current = getSettings();
-                        nextActivity = clock.ElapsedMilliseconds + random.Next(current.IntervalMinimumSeconds, current.IntervalMaximumSeconds + 1) * 1000;
-                    }
+                    WriteRandomText(token);
+                    nextTyping = clock.ElapsedMilliseconds + NextTypingInterval();
                 }
-                catch (Win32Exception)
+                else
                 {
-                    // Input was busy (e.g. the user was moving the mouse); skip this attempt and retry shortly.
-                    if (typingDue) nextTyping = clock.ElapsedMilliseconds + 1000;
-                    else nextActivity = clock.ElapsedMilliseconds + 1000;
+                    Step(token);
+                    Interlocked.Increment(ref completedActivities);
+                    var current = getSettings();
+                    nextActivity = clock.ElapsedMilliseconds + random.Next(current.IntervalMinimumSeconds, current.IntervalMaximumSeconds + 1) * 1000;
                 }
             }
         }
@@ -204,11 +199,23 @@ public sealed class ActivityEngine
 
     private void MoveTo(Point target, CancellationToken token)
     {
-        WaitForUserMovement(0, token);
-        var area = WaitForArea(token);
-        lastInjectedPosition = new Point(Math.Clamp(target.X, area.Left, area.Right - 1),
-            Math.Clamp(target.Y, area.Top, area.Bottom - 1));
-        input.SetCursorPosition(lastInjectedPosition.Value);
+        for (var attempt = 0; ; attempt++)
+        {
+            WaitForUserMovement(0, token);
+            var area = WaitForArea(token);
+            var position = new Point(Math.Clamp(target.X, area.Left, area.Right - 1),
+                Math.Clamp(target.Y, area.Top, area.Bottom - 1));
+            try
+            {
+                input.SetCursorPosition(position);
+                lastInjectedPosition = position;
+                return;
+            }
+            catch (Win32Exception ex) when (attempt < CursorMoveRetryCount && ex.NativeErrorCode is ErrorAccessDenied or ErrorBusy)
+            {
+                Pause(CursorMoveRetryDelayMilliseconds, token);
+            }
+        }
     }
 
     private bool HasUserInput() => input.UserInputVersion is { } version

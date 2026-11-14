@@ -37,6 +37,25 @@ public sealed class ActivitySettingsTests
         finally { File.Delete(path); }
     }
 
+    [Fact]
+    public async Task ReservedGlobalShortcutMigratesAndPreservesOtherSettings()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"mmaway-test-{Guid.NewGuid():N}.json");
+        try
+        {
+            await File.WriteAllTextAsync(path, "{\"GlobalHotkey\":\"Control+s\",\"UserIdleSeconds\":12,\"SettingsVersion\":1}");
+            var store = new SettingsStore(path);
+            var loaded = await store.LoadAsync();
+            Assert.True(store.ReplacedReservedGlobalHotkey);
+            Assert.Equal("Ctrl+Alt+Shift+M", loaded.GlobalHotkey);
+            Assert.Equal(12, loaded.UserIdleSeconds);
+            var reloaded = await store.LoadAsync();
+            Assert.False(store.ReplacedReservedGlobalHotkey);
+            Assert.Equal(loaded, reloaded with { SelectedPatterns = loaded.SelectedPatterns });
+        }
+        finally { File.Delete(path); }
+    }
+
     [Theory]
     [InlineData("Ctrl+Alt+M", "Ctrl+Alt+Shift+M")]
     [InlineData("Ctrl+F10", "Ctrl+F10")]

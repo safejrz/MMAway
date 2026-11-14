@@ -105,7 +105,10 @@ internal sealed class WindowsInput : IInputInjector
     {
         activity.RecordInjection(position);
         if (!SetCursorPos(position.X, position.Y))
-            throw new Win32Exception(Marshal.GetLastWin32Error(), "Could not move the cursor.");
+        {
+            var code = Marshal.GetLastWin32Error();
+            throw new Win32Exception(code, $"Could not move the cursor (Windows error {code}: {new Win32Exception(code).Message}). The desktop may be locked or unavailable.");
+        }
         var actual = GetCursorPosition();
         if (actual != position) activity.RecordInjection(actual);
     }
