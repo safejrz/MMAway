@@ -45,7 +45,7 @@ public sealed class OptionsFormTests
                 var about = (FlowLayoutPanel)form.Controls.Find("pageAbout", true).Single();
                 Assert.True(about.Visible);
                 var version = (Label)about.Controls.Find("version", true).Single();
-                Assert.Equal("1.7.0", version.Text);
+                Assert.Equal("1.7.2", version.Text);
                 Assert.Equal(typeof(MainWindow).Assembly.GetName().Version!.ToString(3), version.Text);
                 ((Button)form.Controls.Find("tabGeneral", true).Single()).PerformClick();
                 hotkey.Text = "invalid";

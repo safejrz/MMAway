@@ -177,6 +177,7 @@ public sealed class ActivityEngineTests
     }
 
     [Theory]
+    [InlineData(0)]
     [InlineData(5)]
     [InlineData(170)]
     public async Task TransientCursorFailureAtStartupIsRetried(int errorCode)
@@ -194,37 +195,120 @@ public sealed class ActivityEngineTests
     }
 
     [Theory]
-    [InlineData(5, 4)]
-    [InlineData(170, 4)]
-    [InlineData(87, 1)]
-    public async Task PersistentCursorFailureIsReported(int errorCode, int expectedAttempts)
+    [InlineData(0)]
+    [InlineData(5)]
+    [InlineData(170)]
+    public async Task PersistentCursorFailurePausesAndRecovers(int errorCode)
     {
-        using var input = new FakeInput { MoveFailuresRemaining = 10, MoveErrorCode = errorCode };
-        var engine = Create(input, () => false, out var errors);
+        using var input = new FakeInput { MoveFailuresRemaining = 100, MoveErrorCode = errorCode };
+        var engine = Create(input, () => false, out var errors, TimeSpan.FromMilliseconds(200));
         engine.Start();
         try
         {
-            await WaitUntil(() => !errors.IsEmpty, TimeSpan.FromSeconds(5));
-            Assert.Equal(errorCode, Assert.IsType<Win32Exception>(Assert.Single(errors)).NativeErrorCode);
-            Assert.Equal(expectedAttempts, input.MoveAttempts);
+            await WaitUntil(() => engine.CursorRecoveryError is not null, TimeSpan.FromSeconds(5));
+            Assert.Equal(errorCode, engine.CursorRecoveryError!.NativeErrorCode);
+            Assert.True(engine.IsRunning);
+            Assert.Equal(0, input.Clicks);
+            await WaitUntil(() => input.MoveAttempts >= 5, TimeSpan.FromSeconds(3));
+            input.MoveFailuresRemaining = 0;
+            await WaitUntil(() => input.Signals > 0, TimeSpan.FromSeconds(8));
+            Assert.Null(engine.CursorRecoveryError);
+            Assert.Empty(errors);
         }
         finally { await engine.StopAsync(); }
     }
 
     [Fact]
-    public async Task CursorFailureDuringLaterActivityIsReported()
+    public async Task UnexpectedCursorFailureIsReported()
     {
-        using var input = new FakeInput { MoveErrorCode = 5 };
+        using var input = new FakeInput { MoveFailuresRemaining = 10, MoveErrorCode = 87 };
         var engine = Create(input, () => false, out var errors);
         engine.Start();
         try
         {
-            await WaitUntil(() => engine.ActivityCount > 0, TimeSpan.FromSeconds(8));
-            input.MoveFailuresRemaining = 10;
-            await WaitUntil(() => !errors.IsEmpty, TimeSpan.FromSeconds(23));
-            Assert.Equal(5, Assert.IsType<Win32Exception>(Assert.Single(errors)).NativeErrorCode);
+            await WaitUntil(() => !errors.IsEmpty, TimeSpan.FromSeconds(5));
+            Assert.Equal(87, Assert.IsType<Win32Exception>(Assert.Single(errors)).NativeErrorCode);
+            Assert.Equal(1, input.MoveAttempts);
         }
         finally { await engine.StopAsync(); }
+    }
+
+    [Fact]
+    public async Task CursorFailureDuringLaterActivityRecovers()
+    {
+        using var input = new FakeInput { MoveErrorCode = 5 };
+        var engine = Create(input, () => false, out var errors, TimeSpan.FromMilliseconds(200));
+        engine.Start();
+        try
+        {
+            await WaitUntil(() => engine.ActivityCount > 0, TimeSpan.FromSeconds(8));
+            input.MoveFailuresRemaining = 100;
+            await WaitUntil(() => engine.CursorRecoveryError is not null, TimeSpan.FromSeconds(23));
+            var completed = engine.ActivityCount;
+            input.MoveFailuresRemaining = 0;
+            await WaitUntil(() => engine.ActivityCount > completed, TimeSpan.FromSeconds(8));
+            Assert.Null(engine.CursorRecoveryError);
+            Assert.Empty(errors);
+        }
+        finally { await engine.StopAsync(); }
+    }
+
+    [Fact]
+    public async Task UserInputDuringRecoveryIsRespected()
+    {
+        using var input = new FakeInput { MoveFailuresRemaining = 100, MoveErrorCode = 0 };
+        var engine = Create(input, () => false, out var errors, TimeSpan.FromMilliseconds(250));
+        engine.Start();
+        try
+        {
+            await WaitUntil(() => engine.CursorRecoveryError is not null, TimeSpan.FromSeconds(5));
+            input.UserMoved();
+            input.MoveFailuresRemaining = 0;
+            await Task.Delay(600);
+            Assert.Equal(0, input.Moves);
+            await WaitUntil(() => input.Moves > 0, TimeSpan.FromSeconds(3));
+            Assert.Empty(errors);
+        }
+        finally { await engine.StopAsync(); }
+    }
+
+    [Fact]
+    public async Task DiagnosticEventsRecordPauseAndRecovery()
+    {
+        using var input = new FakeInput { MoveFailuresRemaining = 100, MoveErrorCode = 0 };
+        var diagnostics = new ConcurrentQueue<(string Event, Exception? Error)>();
+        var engine = Create(input, () => false, out var errors, TimeSpan.FromMilliseconds(200), diagnostics);
+        engine.Start();
+        try
+        {
+            await WaitUntil(() => diagnostics.Any(item => item.Event.StartsWith("Cursor recovery paused")), TimeSpan.FromSeconds(5));
+            Assert.Contains(diagnostics, item => item.Event == "Cursor movement failed; short retries starting" &&
+                item.Error is Win32Exception { NativeErrorCode: 0 });
+            input.MoveFailuresRemaining = 0;
+            await WaitUntil(() => diagnostics.Any(item => item.Event == "Cursor movement recovered"), TimeSpan.FromSeconds(5));
+            Assert.Empty(errors);
+        }
+        finally { await engine.StopAsync(); }
+    }
+
+    [Fact]
+    public async Task DiagnosticEventsRecordFatalErrorAndStoppedRecovery()
+    {
+        using var input = new FakeInput { MoveFailuresRemaining = 100, MoveErrorCode = 87 };
+        var diagnostics = new ConcurrentQueue<(string Event, Exception? Error)>();
+        var engine = Create(input, () => false, out var errors, diagnostics: diagnostics);
+        engine.Start();
+        await WaitUntil(() => !errors.IsEmpty, TimeSpan.FromSeconds(5));
+        await engine.StopAsync();
+        Assert.Contains(diagnostics, item => item.Event == "Activity stopped due to an error" &&
+            item.Error is Win32Exception { NativeErrorCode: 87 });
+
+        using var recoveryInput = new FakeInput { MoveFailuresRemaining = 100, MoveErrorCode = 0 };
+        var recoveryEngine = Create(recoveryInput, () => false, out _, diagnostics: diagnostics);
+        recoveryEngine.Start();
+        await WaitUntil(() => recoveryEngine.CursorRecoveryError is not null, TimeSpan.FromSeconds(5));
+        await recoveryEngine.StopAsync();
+        Assert.Contains(diagnostics, item => item.Event == "Activity stopped while awaiting cursor recovery");
     }
 
     [Fact]
@@ -239,13 +323,35 @@ public sealed class ActivityEngineTests
         Assert.False(engine.IsRunning);
     }
 
-    private static ActivityEngine Create(FakeInput input, Func<bool> canClick, out ConcurrentQueue<Exception> errors)
+    [Fact]
+    public async Task StopInterruptsLongCursorRecoveryWait()
+    {
+        using var input = new FakeInput { MoveFailuresRemaining = 100, MoveErrorCode = 0 };
+        var engine = Create(input, () => false, out var errors);
+        Assert.Equal(TimeSpan.FromSeconds(60), engine.CursorRecoveryInterval);
+        engine.Start();
+        await WaitUntil(() => engine.CursorRecoveryError is not null, TimeSpan.FromSeconds(5));
+        await Task.Delay(300);
+        Assert.Equal(4, input.MoveAttempts);
+        Assert.Equal(0, input.Signals);
+        await engine.StopAsync().WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.Null(engine.CursorRecoveryError);
+        Assert.Empty(errors);
+        Assert.False(engine.IsRunning);
+    }
+
+    private static ActivityEngine Create(FakeInput input, Func<bool> canClick, out ConcurrentQueue<Exception> errors,
+        TimeSpan? recoveryInterval = null, ConcurrentQueue<(string Event, Exception? Error)>? diagnostics = null)
     {
         var captured = new ConcurrentQueue<Exception>();
         errors = captured;
         return new ActivityEngine(input, () => new Rectangle(100, 100, 200, 200), (_, _) => canClick(),
             () => new ActivitySettings { UserIdleSeconds = 1, TypingEnabled = false, Aggressiveness = 3 },
-            _ => { }, () => { }, () => { }, captured.Enqueue);
+            _ => { }, () => { }, () => { }, captured.Enqueue)
+        {
+            CursorRecoveryInterval = recoveryInterval ?? TimeSpan.FromSeconds(60),
+            RecordDiagnostic = diagnostics is null ? null : (eventName, error) => diagnostics.Enqueue((eventName, error))
+        };
     }
 
     private static async Task WaitUntil(Func<bool> condition, TimeSpan timeout)

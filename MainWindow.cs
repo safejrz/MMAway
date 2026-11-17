@@ -16,6 +16,8 @@ namespace MMA
         private readonly IKeepAwake keepAwake = new WindowsKeepAwake();
         private readonly ActivityEngine engine;
         private readonly SettingsStore settingsStore;
+        private readonly ActivityDiagnosticLog diagnosticLog = new();
+        private int diagnosticWarningShown;
         private ActivitySettings settings = new();
         private bool settingsReady;
         private sealed record BoundsSnapshot(Rectangle? Bounds, IntPtr Window, IntPtr Output, bool Active);
@@ -25,6 +27,7 @@ namespace MMA
         private bool optionsInProgress;
         private WindowsGlobalHotkey? globalHotkey;
         private System.Windows.Forms.Timer autoStopTimer = null!;
+        private ToolTip activityToolTip = null!;
         private long autoStopStarted;
         private int autoStopMilliseconds;
         private int session;
@@ -52,6 +55,7 @@ namespace MMA
             InitializeComponent();
             autoStopTimer = new System.Windows.Forms.Timer(components!);
             autoStopTimer.Tick += AutoStopTimer_Tick;
+            activityToolTip = new ToolTip(components!);
             buttonOk.Enabled = false;
             optionsButton.Enabled = false;
             Location = WindowPlacement.GetStartupPosition(workingArea, Size);
@@ -68,7 +72,10 @@ namespace MMA
             engine = new ActivityEngine(input, () => Volatile.Read(ref boundsSnapshot).Bounds,
                 CanClick, () => Volatile.Read(ref settings), text => PostToSession(() => AppendGeneratedText(text)),
                 () => PostToSession(SelectRandomText),
-                () => PostToSession(textBox.Clear), ReportEngineError);
+                () => PostToSession(textBox.Clear), ReportEngineError)
+            {
+                RecordDiagnostic = WriteActivityDiagnostic
+            };
         }
 
         private async void LoadSettingsAsync(object? sender, EventArgs e)
@@ -223,9 +230,16 @@ namespace MMA
         private void UpdateRunningStats()
         {
             var elapsed = engine.SessionDuration;
-            activityProgress.Text = settings.ShowSessionInfo
-                ? $"Running · {elapsed:hh\\:mm\\:ss} · {engine.ActivityCount} cycles"
-                : "Running";
+            var recoveryError = engine.CursorRecoveryError;
+            activityProgress.Text = recoveryError is not null
+                ? $"Cursor unavailable ({recoveryError.NativeErrorCode}); retrying"
+                : settings.ShowSessionInfo
+                    ? $"Running · {elapsed:hh\\:mm\\:ss} · {engine.ActivityCount} cycles"
+                    : "Running";
+            var description = recoveryError is null ? null : $"{recoveryError.Message}\nRetrying automatically. Diagnostics: {diagnosticLog.Path}";
+            activityProgress.AccessibleDescription = description;
+            if (activityToolTip.GetToolTip(activityProgress) != (description ?? string.Empty))
+                activityToolTip.SetToolTip(activityProgress, description);
             activityProgress.Invalidate();
         }
 
@@ -395,6 +409,25 @@ namespace MMA
             }
         }
 
+        private void WriteActivityDiagnostic(string eventName, Exception? error)
+        {
+            try
+            {
+                diagnosticLog.Write(eventName, error);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                Trace.TraceError($"Could not write activity diagnostics: {ex}");
+                if (Interlocked.Exchange(ref diagnosticWarningShown, 1) == 0)
+                    BeginInvoke(new Action(() =>
+                    {
+                        if (!IsDisposed && !Disposing)
+                            MessageBox.Show(this, $"Could not write activity diagnostics to {diagnosticLog.Path}: {ex.Message}\nActivity can continue, but diagnostic details may be lost.",
+                                "MMAway", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    }));
+            }
+        }
+
         private void ReportEngineError(Exception error)
         {
             var failedSession = Volatile.Read(ref session);
@@ -406,7 +439,7 @@ namespace MMA
             if (!running || failedSession != session) return;
             transitionInProgress = true;
             buttonOk.Enabled = false;
-            var message = $"Activity stopped: {error.Message}";
+            var message = $"Activity stopped: {error.Message}\nDiagnostic log: {diagnosticLog.Path}";
             try
             {
                 await StopActivityAsync();

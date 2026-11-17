@@ -17,13 +17,19 @@ MMAway is a small **Windows-only** desktop utility that simulates occasional mou
 - Occasionally perform a simulated left click in the text box only when MMAway is foreground and the target is unobstructed.
 - Pause generated activity while the window is minimized or the text box has no usable bounds; restore the window to resume.
 - Pause automated activity after real mouse movement or clicks, resuming after the configured idle delay (default 10 seconds). Injected events and recent cursor-warp echoes are filtered.
-- Retry temporary access-denied or busy cursor-move failures briefly; if Windows still rejects the move, activity stops and reports the Windows error. A locked or unavailable desktop can prevent cursor movement.
+- Retry cursor-move failures with no Windows error code, access denied, or busy briefly. If they persist, pause activity, show a retry status, and try again every 60 seconds until the cursor is available or the session is stopped. Other errors still stop activity and are reported. A locked, secure, disconnected, or otherwise unavailable input desktop can prevent cursor movement; error 0 means Windows did not provide a useful reason, not that the move succeeded.
 - Use eased Bézier motion for random moves and optionally show session time and activity counts.
 - Type random characters into MMAway’s own text box; every three or four typing cycles, select a short portion for the next text to replace. When generated text takes the box above 100 characters, the box is cleared, including any manually entered text. It does not type messages into Teams.
 - Ask Windows to keep the system and display awake while activity is running, and restore the normal sleep behavior when stopped.
 - Change the app icon and show an animated running indicator while activity is running.
 
-Long activity intervals or repeated mouse interaction can delay synthetic activity and allow Teams to become Away; typing and movement can also add time between activity signals. Minimized windows pause generated activity until restored. Auto-stop uses the elapsed session time, including pauses.
+Long activity intervals or repeated mouse interaction can delay synthetic activity and allow Teams to become Away; typing and movement can also add time between activity signals. Minimized windows and cursor recovery pause generated activity; unlocking or restoring the desktop may be necessary before recovery succeeds. Auto-stop uses the elapsed session time, including pauses.
+
+## Troubleshooting activity errors
+
+If a cursor error happens again, check `%LOCALAPPDATA%\MMAway\activity-diagnostics.log` and `%LOCALAPPDATA%\MMAway\activity-diagnostics.log.1`. The desktop snapshot may help narrow down the cause, but error 0 can still leave it uncertain. Review both files for sensitive details before sharing them.
+
+Cursor failures, retry pauses, recoveries, and unexpected activity errors are recorded in the log. Hover over the retry indicator to see the log path, or check the error dialog if activity stops. The log includes timestamps, app and Windows versions, remote-session status, error details and stack traces; cursor-move failures also include the requested screen coordinates and Windows input/thread desktop names or access errors. The log does not include generated text. It rotates at approximately 1 MB, retaining one previous file (`activity-diagnostics.log.1`). If logging fails, MMAway warns once and continues activity without a reliable diagnostic record.
 
 To observe Windows idle time during a field test, run `powershell -File .\scripts\windows-idle-probe.ps1` while MMAway is running. The probe writes a CSV and refuses to overwrite an existing file; it measures Windows idle time, not Teams presence.
 
@@ -48,6 +54,7 @@ The app version is set in `MMA.csproj` and should be updated alongside each rele
 - **v1.6.0 — Hotkey and version information** — Changes the default start/stop hotkey to Ctrl+Alt+Shift+M, upgrades settings using the former default, and adds version information to Options.
 - **v1.7.0 — Window shortcut and refreshed Options** — Uses the global hotkey to show the running window and Ctrl+S within the main window to start or stop activity; refreshes Options, limits generated text, and improves handling of cursor-move failures.
 - **v1.7.1 — Single application instance** — Prevents multiple MMAway windows from opening by exiting additional launches while an instance is already running.
+- **v1.7.2 — Cursor recovery and diagnostics** — Retries cursor-move failures (including error 0) with 60-second recovery attempts instead of stopping, and writes a rotating diagnostic log to `%LOCALAPPDATA%\MMAway`.
 
 ## Download and run
 

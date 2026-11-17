@@ -35,7 +35,16 @@ public sealed class ActivityEngine
     private int charactersUntilNextSpace;
     private CancellationTokenSource? cancellation;
     private Task? loop;
+    private Win32Exception? cursorRecoveryError;
     private int pass;
+
+    private sealed class CursorMoveUnavailableException(Win32Exception error) : Exception(error.Message, error)
+    {
+        public Win32Exception Error { get; } = error;
+    }
+
+    internal TimeSpan CursorRecoveryInterval { get; init; } = TimeSpan.FromSeconds(60);
+    internal Action<string, Exception?>? RecordDiagnostic { get; init; }
 
     public ActivityEngine(IInputInjector input, Func<Rectangle?> getActivityBounds,
         Func<Point, Rectangle, bool> canClick, Func<ActivitySettings> getSettings,
@@ -54,6 +63,7 @@ public sealed class ActivityEngine
     public bool IsRunning => loop is { IsCompleted: false };
     public TimeSpan SessionDuration => sessionClock.Elapsed;
     public int ActivityCount => Volatile.Read(ref completedActivities);
+    public Win32Exception? CursorRecoveryError => Volatile.Read(ref cursorRecoveryError);
 
     public void Start()
     {
@@ -91,45 +101,67 @@ public sealed class ActivityEngine
         {
             lastUserInputVersion = input.UserInputVersion;
             lastInjectedPosition = null;
-            var area = WaitForArea(token);
-            WaitForUserMovement(0, token);
-            MoveTo(Center(area), token);
-            RunPattern(token);
-            Interlocked.Increment(ref completedActivities);
-            var clock = Stopwatch.StartNew();
-            var nextActivity = clock.ElapsedMilliseconds + random.Next(10000, 15000);
-            var nextTyping = clock.ElapsedMilliseconds + NextTypingInterval();
             while (true)
             {
-                var settings = getSettings();
-                var typingDue = settings.TypingEnabled && nextTyping <= nextActivity;
-                var nextDue = typingDue ? nextTyping : nextActivity;
-                var remaining = nextDue - clock.ElapsedMilliseconds;
-                if (remaining > 0) await Task.Delay(TimeSpan.FromMilliseconds(remaining), token).ConfigureAwait(false);
-                token.ThrowIfCancellationRequested();
-                WaitForUserMovement(0, token);
-                if (typingDue)
+                try
                 {
-                    WriteRandomText(token);
-                    nextTyping = clock.ElapsedMilliseconds + NextTypingInterval();
+                    await RunActivitiesAsync(token).ConfigureAwait(false);
                 }
-                else
+                catch (CursorMoveUnavailableException ex)
                 {
-                    Step(token);
-                    Interlocked.Increment(ref completedActivities);
-                    var current = getSettings();
-                    nextActivity = clock.ElapsedMilliseconds + random.Next(current.IntervalMinimumSeconds, current.IntervalMaximumSeconds + 1) * 1000;
+                    Volatile.Write(ref cursorRecoveryError, ex.Error);
+                    RecordDiagnostic?.Invoke($"Cursor recovery paused; retry in {CursorRecoveryInterval.TotalSeconds} seconds", ex.Error);
+                    await Task.Delay(CursorRecoveryInterval, token).ConfigureAwait(false);
                 }
             }
         }
-        catch (OperationCanceledException) when (token.IsCancellationRequested) { }
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        {
+            if (CursorRecoveryError is not null) RecordDiagnostic?.Invoke("Activity stopped while awaiting cursor recovery", null);
+        }
         catch (Exception ex)
         {
+            RecordDiagnostic?.Invoke("Activity stopped due to an error", ex);
             reportError(ex);
         }
         finally
         {
+            Volatile.Write(ref cursorRecoveryError, null);
             sessionClock.Stop();
+        }
+    }
+
+    private async Task RunActivitiesAsync(CancellationToken token)
+    {
+        var area = WaitForArea(token);
+        WaitForUserMovement(0, token);
+        MoveTo(Center(area), token);
+        RunPattern(token);
+        Interlocked.Increment(ref completedActivities);
+        var clock = Stopwatch.StartNew();
+        var nextActivity = clock.ElapsedMilliseconds + random.Next(10000, 15000);
+        var nextTyping = clock.ElapsedMilliseconds + NextTypingInterval();
+        while (true)
+        {
+            var settings = getSettings();
+            var typingDue = settings.TypingEnabled && nextTyping <= nextActivity;
+            var nextDue = typingDue ? nextTyping : nextActivity;
+            var remaining = nextDue - clock.ElapsedMilliseconds;
+            if (remaining > 0) await Task.Delay(TimeSpan.FromMilliseconds(remaining), token).ConfigureAwait(false);
+            token.ThrowIfCancellationRequested();
+            WaitForUserMovement(0, token);
+            if (typingDue)
+            {
+                WriteRandomText(token);
+                nextTyping = clock.ElapsedMilliseconds + NextTypingInterval();
+            }
+            else
+            {
+                Step(token);
+                Interlocked.Increment(ref completedActivities);
+                var current = getSettings();
+                nextActivity = clock.ElapsedMilliseconds + random.Next(current.IntervalMinimumSeconds, current.IntervalMaximumSeconds + 1) * 1000;
+            }
         }
     }
 
@@ -199,6 +231,7 @@ public sealed class ActivityEngine
 
     private void MoveTo(Point target, CancellationToken token)
     {
+        var failed = false;
         for (var attempt = 0; ; attempt++)
         {
             WaitForUserMovement(0, token);
@@ -209,10 +242,16 @@ public sealed class ActivityEngine
             {
                 input.SetCursorPosition(position);
                 lastInjectedPosition = position;
+                if (failed || CursorRecoveryError is not null)
+                    RecordDiagnostic?.Invoke("Cursor movement recovered", null);
+                Volatile.Write(ref cursorRecoveryError, null);
                 return;
             }
-            catch (Win32Exception ex) when (attempt < CursorMoveRetryCount && ex.NativeErrorCode is ErrorAccessDenied or ErrorBusy)
+            catch (Win32Exception ex) when (ex.NativeErrorCode is 0 or ErrorAccessDenied or ErrorBusy)
             {
+                if (!failed) RecordDiagnostic?.Invoke("Cursor movement failed; short retries starting", ex);
+                failed = true;
+                if (attempt >= CursorMoveRetryCount) throw new CursorMoveUnavailableException(ex);
                 Pause(CursorMoveRetryDelayMilliseconds, token);
             }
         }

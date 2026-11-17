@@ -107,7 +107,11 @@ internal sealed class WindowsInput : IInputInjector
         if (!SetCursorPos(position.X, position.Y))
         {
             var code = Marshal.GetLastWin32Error();
-            throw new Win32Exception(code, $"Could not move the cursor (Windows error {code}: {new Win32Exception(code).Message}). The desktop may be locked or unavailable.");
+            var detail = code == 0 ? "Windows did not provide an error code" : $"Windows error {code}: {new Win32Exception(code).Message}";
+            var error = new Win32Exception(code, $"Could not move the cursor ({detail}). The desktop may be locked or unavailable.");
+            error.Data["Requested cursor position"] = position;
+            error.Data["Desktop context"] = DesktopDiagnostics.Capture();
+            throw error;
         }
         var actual = GetCursorPosition();
         if (actual != position) activity.RecordInjection(actual);
